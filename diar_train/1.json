@@ -1,0 +1,34 @@
+{
+    "api_version": 2,
+    "description": "Train a diarization system and output a model (the model must include the speaker database)",
+    "groups": [
+        {
+            "inputs": {
+                "features": {
+                    "type": "system/array_2d_floats/1"
+                },
+                "uem": {
+                    "type": "anthony_larcher/uemranges/1"
+                },
+                "file_info": {
+                    "type": "anthony_larcher/file_info_sd/1"
+                },
+                "speakers": {
+                    "type": "anthony_larcher/speakers/1"
+                }
+            },
+            "name": "group",
+            "outputs": {
+                "model": {
+                    "type": "anthony_larcher/array_1d_uint8/1"
+                }
+            }
+        }
+    ],
+    "language": "python",
+    "parameters": {},
+    "schema_version": 3,
+    "splittable": false,
+    "type": "autonomous",
+    "uses": {}
+}

@@ -1,0 +1,25 @@
+{
+    "api_version": 2,
+    "description": "",
+    "groups": [
+        {
+            "inputs": {
+                "speech": {
+                    "type": "system/array_1d_floats/1"
+                }
+            },
+            "name": "group",
+            "outputs": {
+                "features": {
+                    "type": "system/array_2d_floats/1"
+                }
+            }
+        }
+    ],
+    "language": "python",
+    "parameters": {},
+    "schema_version": 3,
+    "splittable": true,
+    "type": "sequential",
+    "uses": {}
+}

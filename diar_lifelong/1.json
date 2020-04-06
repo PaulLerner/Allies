@@ -1,0 +1,56 @@
+{
+    "schema_version": 3,
+    "language": "python",
+    "api_version": 2,
+    "type": "sequential_loop_processor",
+    "splittable": false,
+    "groups": [
+        {
+            "inputs": {
+                "features": {
+                    "type": "system/array_2d_floats/1"
+                },
+                "processor_uem": {
+                    "type": "anthony_larcher/uemranges/1"
+                },
+                "processor_file_info": {
+                    "type": "anthony_larcher/file_info_sd/1"
+                }
+            },
+            "outputs": {
+                "adapted_speakers": {
+                    "type": "anthony_larcher/speakers/1"
+                }
+            },
+            "loop": {
+                "request": {
+                    "type": "anthony_larcher/system_to_user_sd/1"
+                },
+                "answer": {
+                    "type": "anthony_larcher/user_to_system_sd/1"
+                }
+            },
+            "name": "group0"
+        },
+        {
+            "name": "group_train",
+            "inputs": {
+                "model": {
+                    "type": "anthony_larcher/array_1d_uint8/1"
+                },
+                "train_features": {
+                    "type": "system/array_2d_floats/1"
+                },
+                "train_uem": {
+                    "type": "anthony_larcher/uemranges/1"
+                },
+                "train_file_info": {
+                    "type": "anthony_larcher/file_info_sd/1"
+                },
+                "train_speakers": {
+                    "type": "anthony_larcher/speakers/1"
+                }
+            }
+        }
+    ]
+}
