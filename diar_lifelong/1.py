@@ -3,9 +3,8 @@ import numpy as np
 import pickle
 import struct
 from pyannote.audio.utils.signal import Peak
-from pyannote.core import Segment, Timeline
 from pyannote.audio.features import Pretrained
-
+from allies.convert import uem_to_timeline
 
 def deserialize(model_loader):
     """
@@ -64,15 +63,14 @@ class Algorithm:
         # Load model if it's the first time the module runs
         if self.model is None:
             self.model = deserialize(data_loaders.loaderOf("model"))
-        
+
         # File input
         wave = inputs['features'].data.value
         uem = inputs['processor_uem'].data
+        uri = inputs['processor_file_info'].get('file_id')
 
         # Build timeline from UEM SAD annotations
-        speech = Timeline([Segment(start, end)
-                           for start, end
-                           in zip(uem['start_time'], uem['end_time'])])
+        speech = uem_to_timeline(uem, uri)
 
         # FIXME the following lines only predict speakers, no model updates yet
         # FIXME replace with SpeakerDiarization pipeline if possible
@@ -109,6 +107,3 @@ class Algorithm:
         outputs["adapted_speakers"].write(hypothesis)
 
         return True
-
-
-
