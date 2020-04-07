@@ -1,20 +1,4 @@
-import numpy as np
-import struct
-import pickle
-
-
-def serialize(scd, emb, clustering):
-    """
-    Serialize models to an array of uint8
-    """
-    model = dict()
-    # TODO serialize model weights?
-    model["scd"] = scd
-    model["emb"] = emb
-    model["clustering"] = clustering
-    pkl = pickle.dumps(model)
-    u8 = np.array(struct.unpack("{}B".format(len(pkl)), pkl), dtype=np.uint8)
-    return u8
+from allies.serializers import DummySerializer
 
 
 class Algorithm:
@@ -23,6 +7,8 @@ class Algorithm:
     We return paths to pretrained models for the time being,
     as it's easier to debug
     """
+    def __init__(self):
+        self.serializer = DummySerializer()
 
     def process(self, data_loaders, outputs):
         """
@@ -35,15 +21,18 @@ class Algorithm:
         # The laoder is the interface used to access inputs of this algorithmic block
         # loader = data_loaders.loaderOf("features")
 
-        # TODO add missing models
-        scd = "don't have it yet"
+        scd = "/vol/work2/coria/allies/scd/train/" + \
+              "ALLIES.SpeakerDiarization.Official.train/" + \
+              "validate_segmentation_fscore/" + \
+              "ALLIES.SpeakerDiarization.Official.development"
         emb = "/vol/work2/coria/allies/AAM/train/" + \
               "ALLIES.SpeakerDiarization.Debug.train/" + \
               "validate_diarization_fscore/" + \
               "ALLIES.SpeakerDiarization.Official.development"
-        clustering = "don't have it yet"
+
+        model = {'scd': scd, 'emb': emb}
         
-        outputs["model"].write({"value": serialize(scd, emb, clustering)})
+        outputs["model"].write({"value": self.serializer.serialize(model)})
         return True
 
 
