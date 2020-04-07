@@ -50,7 +50,7 @@ class Algorithm:
             # check fake protocol durations
             # TODO update with real protocol.stats
             annotated_total, annotation_total = 0.0,0.0
-            for uri, current_file in self.protocol :
+            for uri, current_file in self.protocol.items() :
                 annotated = current_file['annotated']
                 annotated_duration = annotated.duration()
                 annotation = current_file['annotation']

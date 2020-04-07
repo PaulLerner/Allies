@@ -23,7 +23,7 @@ def uem_to_timeline(uem, uri = None):
 
     Parameters:
     -----------
-    uem: dict of
+    uem: dict or uemranges
       - 'start_time': list[float], start times of speech in seconds
       - 'end_time': list[float], end times of speech in seconds
     uri : str, optional
@@ -34,16 +34,18 @@ def uem_to_timeline(uem, uri = None):
     --------
     timeline, see pyannote.core.Timeline
     """
-    segments = [Segment(start, end)
-                       for start, end
-                       in zip(uem['start_time'], uem['end_time'])]
+    if isinstance(uem,dict):
+        uem=zip(uem['start_time'], uem['end_time'])
+    else:
+        uem=zip(uem.start_time,uem.end_time)
+    segments = [Segment(start, end) for start, end in uem]
     return Timeline(segments, uri)
 
 def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
     annotation = Annotation(uri, modality)
     for idx in range(speakers.speaker.size):
-        start=int(round(speakers.start_time[idx] * 100, 0))
-        stop=int(round(speakers.end_time[idx] * 100, 0))
+        start=speakers.start_time[idx]
+        stop=speakers.end_time[idx]
         segment = Segment(start, stop)
         annotation[segment, idx] = speakers.speaker[idx]
     return annotation
@@ -76,7 +78,7 @@ def load_train(data_loaders):
             'annotation' : annotation,
             'annotated' : annotated
         }
-        protocol[uri] = current_file
+        protocol[file_id] = current_file
 
     # TODO handle features (i.e. waveform)
     # TODO create ProtocolFile
