@@ -2,7 +2,7 @@
 
 from pyannote.core import Annotation, Segment, Timeline
 from warnings import warn
-from pyannote.database.protocol import SpeakerDiarizationProtocol
+from pyannote.database.protocol import SpeakerDiarizationProtocol, ProtocolFile
 
 def AlliesProtocol(SpeakerDiarizationProtocol):
 
@@ -34,9 +34,7 @@ def uem_to_timeline(uem, uri = None):
     --------
     timeline, see pyannote.core.Timeline
     """
-    segments = [Segment(start, end)
-                       for start, end
-                       in zip(uem['start_time'], uem['end_time'])]
+    segments = [Segment(start, end) for start, end in uem]
     return Timeline(segments, uri)
 
 def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
@@ -48,6 +46,33 @@ def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
         annotation[segment, idx] = speakers.speaker[idx]
     return annotation
 
+def get_dummy_protocol(current_file: ProtocolFile) -> SpeakerDiarizationProtocol:
+        """Get dummy protocol containing only `current_file`
+
+        Parameters
+        ----------
+        current_file : ProtocolFile
+
+        Returns
+        -------
+        protocol : SpeakerDiarizationProtocol instance
+            Dummy protocol containing only `current_file` in both train,
+            dev., and test sets.
+
+        """
+
+        class DummyProtocol(SpeakerDiarizationProtocol):
+
+            def trn_iter(self):
+                yield current_file
+
+            def dev_iter(self):
+                yield current_file
+
+            def tst_iter(self):
+                yield current_file
+
+        return DummyProtocol()
 
 def load_train(data_loaders):
     """Loads (initial) training set
@@ -59,9 +84,6 @@ def load_train(data_loaders):
 
     # The loader is the interface used to acces inputs of this algorithmic block
     loader = data_loaders.loaderOf("features")
-
-    # create pyannote protocol
-    # TODO (how ?)
     protocol = {}
     for i in range(loader.count()):
         (data, _, end_index) = loader[i]
@@ -76,9 +98,6 @@ def load_train(data_loaders):
             'annotation' : annotation,
             'annotated' : annotated
         }
-        protocol[uri] = current_file
-
+        protocol[file_id] = ProtocolFile(current_file)
     # TODO handle features (i.e. waveform)
-    # TODO create ProtocolFile
-
-    return protocol
+    return get_dummy_protocol(protocol)
