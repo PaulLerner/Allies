@@ -62,19 +62,21 @@ def load_train(data_loaders):
 
     # create pyannote protocol
     # TODO (how ?)
-    protocol = None
+    protocol = {}
     for i in range(loader.count()):
         (data, _, end_index) = loader[i]
         speakers = data["speakers"]
         file_id = data["file_info"].file_id
         supervision = data["file_info"].supervision
         time_stamp = data["file_info"].time_stamp
-
-        annotation = speakers_to_annotation(speakers, file_id)
-        for (segment, track, label) in annotation.itertracks(yield_label = True):
-            print(segment, track, label)
-        warn("breaking")
-        break
+        uem = data["uem"]
+        annotated = uem_to_timeline(uem, file_id)
+        annotation = speakers_to_annotation(speakers, file_id).crop(annotated)
+        current_file = {
+            'annotation' : annotation,
+            'annotated' : annotated
+        }
+        protocol[uri] = current_file
 
     # TODO handle features (i.e. waveform)
     # TODO create ProtocolFile

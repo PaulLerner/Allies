@@ -47,11 +47,18 @@ class Algorithm:
         # Load protocol if it's the first time the module runs
         if self.protocol is None:
             self.protocol = load_train(data_loaders)
-
-        # File input
-        wave = inputs['features'].data.value
-        uem = inputs['processor_uem'].data
-        uri = inputs['processor_file_info'].get('file_id')
+            # check fake protocol durations
+            # TODO update with real protocol.stats
+            annotated_total, annotation_total = 0.0,0.0
+            for uri, current_file in self.protocol :
+                annotated = current_file['annotated']
+                annotated_duration = annotated.duration()
+                annotation = current_file['annotation']
+                annotation_duration = annotation.get_timeline().duration()
+                print(f"{uri}, annotation: {annotation_duration:.2f}, annotated: {annotated_duration:.2f}")
+                annotated_total+=annotated_duration
+                annotation_total+=annotation_duration
+            print(f'\n\nTOTAL:  annotation: {annotation_total:.2f}, annotated: {annotated_total:.2f}')
 
         # TODO add missing models
         scd = "don't have it yet"
