@@ -82,7 +82,7 @@ def yield_train(data_loaders):
         supervision = data["file_info"].supervision
         time_stamp = data["file_info"].time_stamp
         uem = data["uem"]
-        features = data['features'].data.value
+        features = data['features'].value
         if len(features.shape) != 2:
             print(features.shape)
             msg = (
