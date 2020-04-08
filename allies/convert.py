@@ -76,18 +76,27 @@ def yield_train(data_loaders):
     # The loader is the interface used to acces inputs of this algorithmic block
     loader = data_loaders.loaderOf("features")
     for i in range(loader.count()):
-        # TODO handle features (i.e. waveform)
         (data, _, end_index) = loader[i]
         speakers = data["speakers"]
         file_id = data["file_info"].file_id
         supervision = data["file_info"].supervision
         time_stamp = data["file_info"].time_stamp
         uem = data["uem"]
+        features = data['features'].data.value
+        if len(features.shape) != 2:
+            print(features.shape)
+            msg = (
+                f'Precomputed waveform should be provided as a '
+                f'(n_samples, n_channels) `np.ndarray`.'
+            )
+            print(msg)
+            raise ValueError(msg)
         annotated = uem_to_timeline(uem, file_id)
         annotation = speakers_to_annotation(speakers, file_id).crop(annotated)
         current_file = {
             'uri' : file_id,
             'annotation' : annotation,
-            'annotated' : annotated
+            'annotated' : annotated,
+            'waveform' : features
         }
         yield ProtocolFile(current_file)
