@@ -68,7 +68,7 @@ def yield_train(data_loaders):
             )
             print(msg)
             raise ValueError(msg)
-        annotated = uem.to_timeline(file_id)
+        annotated = uem.to_timeline()
         annotation = speakers_to_annotation(speakers, file_id).crop(annotated)
         current_file = {
             'uri' : file_id,

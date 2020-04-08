@@ -11,10 +11,9 @@ class Algorithm:
     We return paths to pretrained models for the time being,
     as it's easier to debug
     """
+    
     def __init__(self):
         self.serializer = DummySerializer()
-
-    def __init__(self):
         self.model = None
         self.sample_rate = 16000
         self.protocol = None
