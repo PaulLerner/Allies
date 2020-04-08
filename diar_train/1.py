@@ -2,6 +2,7 @@ import numpy as np
 import struct
 import pickle
 from allies.convert import yield_train, load_protocol
+from allies.utils import print_stats
 
 def serialize(scd, emb, clustering):
     """
@@ -47,14 +48,9 @@ class Algorithm:
         # Load protocol if it's the first time the module runs
         if self.protocol is None:
             file_generator = yield_train(data_loaders)
-            self.protocol = load_protocol(file_generator())
+            self.protocol = load_protocol(file_generator)
             print('getting stats from protocol train subset...')
-            stats = self.protocol.stats('train')
-            for key,value in stats.items():
-                if key=='labels':
-                    print(f'{len(labels)} speakers')
-                else:
-                    print(f'{key}: {value:.2f}')
+            print_stats(self.protocol.stats('train'))
 
         # TODO add missing models
         scd = "don't have it yet"

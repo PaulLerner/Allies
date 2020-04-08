@@ -37,7 +37,7 @@ def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
         annotation[segment, idx] = speakers.speaker[idx]
     return annotation
 
-def load_protocol(file_generator: generator) -> SpeakerDiarizationProtocol:
+def load_protocol(file_generator) -> SpeakerDiarizationProtocol:
         """Given a ProtocolFile generator, instantiate a SpeakerDiarizationProtocol
         which yields the file in the relevant subset_iter
 
