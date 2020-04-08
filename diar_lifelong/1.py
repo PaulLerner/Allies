@@ -13,6 +13,34 @@ class Algorithm:
     def __init__(self):
         self.model = None
         self.serializer = DummySerializer()
+        self.pipeline = None
+        self.hyperparameters = {
+        #AMI hyperparameters from pyannote tutorial
+        #TODO update with ALLIES hyperparameters
+        "pipeline": {
+            "min_duration": 3.306092065580709,
+            "speech_turn_assignment": {
+                "closest_assignment": {
+                    "threshold": 0.8401481964056187
+                }
+            },
+            "speech_turn_clustering": {
+                "clustering": {
+                    "damping": 0.6066098204003955,
+                    "preference": -2.9717704925136976
+                }
+            },
+            "speech_turn_segmentation": {
+                "speaker_change_detection": {
+                    "alpha": 0.11115647156273972,
+                    "min_duration": 0.5283486365753665
+                },
+                # we use oracle SAD from UEM
+                "speech_activity_detection": {}
+                }
+            }
+        }
+
 
     def process(self, inputs, data_loaders, outputs, loop_channel):
         """
@@ -42,6 +70,15 @@ class Algorithm:
             model = data_loaders.loaderOf("model")[0][0]['model'].value
             self.model = self.serializer.deserialize(model)
 
+        # Load pipeline if it's the first time the module runs
+        if self.pipeline is None:
+            # Build diarization pipeline
+            self.pipeline = SpeakerDiarization(sad_scores='oracle',
+                                              scd_scores=self.model['scd'],
+                                              embedding=self.model['emb'])
+            #instantiate pipeline with hyperparameters computed offline
+            self.pipeline.instantiate(self.hyperparameters['pipeline'])
+
         # ALLIES lifelong step inputs
         wave = inputs['features'].data.value
         uri = inputs['processor_file_info'].get('file_id')
@@ -51,13 +88,8 @@ class Algorithm:
         file = {'waveform': wave,
                 'annotation': uem.to_annotation()}
 
-        # Build diarization pipeline
-        pipeline = SpeakerDiarization(sad_scores='oracle',
-                                      scd_scores=self.model['scd'],
-                                      embedding=self.model['emb'])
-
         # FIXME only predicting speakers, no model updates yet
-        hypothesis = AlliesAnnotation(pipeline(file)).to_hypothesis()
+        hypothesis = AlliesAnnotation(self.pipeline(file)).to_hypothesis()
 
         # Write output
         outputs["adapted_speakers"].write(hypothesis)
