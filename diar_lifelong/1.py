@@ -44,12 +44,12 @@ class Algorithm:
 
         # ALLIES lifelong step inputs
         wave = inputs['features'].data.value
-        uem = UEM(inputs['processor_uem'].data)
         uri = inputs['processor_file_info'].get('file_id')
+        uem = UEM(inputs['processor_uem'].data,uri)
 
         # Build input to pyannote pipeline
         file = {'waveform': wave,
-                'annotation': uem.to_annotation(uri)}
+                'annotation': uem.to_annotation()}
 
         # Build diarization pipeline
         pipeline = SpeakerDiarization(sad_scores='oracle',

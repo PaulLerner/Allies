@@ -1,5 +1,9 @@
 from allies.serializers import DummySerializer
-
+import numpy as np
+import struct
+import pickle
+from allies.convert import yield_train, load_protocol
+from allies.utils import print_stats
 
 class Algorithm:
     """
@@ -10,9 +14,14 @@ class Algorithm:
     def __init__(self):
         self.serializer = DummySerializer()
 
+    def __init__(self):
+        self.model = None
+        self.sample_rate = 16000
+        self.protocol = None
+
     def process(self, data_loaders, outputs):
         """
-        Use the training data provided through the dataloader in order to 
+        Use the training data provided through the dataloader in order to
         train the acoustic model and return it
 
         :param data_loader: input parameters that is used to access all incoming data
@@ -21,18 +30,30 @@ class Algorithm:
         # The laoder is the interface used to access inputs of this algorithmic block
         # loader = data_loaders.loaderOf("features")
 
+
+        # Load model if it's the first time the module runs
+        if self.model is None:
+            pass
+            #self.model = TODO
+
+        # Load protocol if it's the first time the module runs
+        if self.protocol is None:
+            file_generator = yield_train(data_loaders)
+            self.protocol = load_protocol(file_generator)
+            print('getting stats from protocol train subset...')
+            print_stats(self.protocol.stats('train'))
+
         scd = "/vol/work2/coria/allies/scd/train/" + \
               "ALLIES.SpeakerDiarization.Official.train/" + \
               "validate_segmentation_fscore/" + \
               "ALLIES.SpeakerDiarization.Official.development"
+
         emb = "/vol/work2/coria/allies/AAM/train/" + \
               "ALLIES.SpeakerDiarization.Debug.train/" + \
               "validate_diarization_fscore/" + \
               "ALLIES.SpeakerDiarization.Official.development"
 
         model = {'scd': scd, 'emb': emb}
-        
+
         outputs["model"].write({"value": self.serializer.serialize(model)})
         return True
-
-
