@@ -11,7 +11,7 @@ class Algorithm:
     We return paths to pretrained models for the time being,
     as it's easier to debug
     """
-    
+
     def __init__(self):
         self.serializer = DummySerializer()
         self.model = None
@@ -41,6 +41,8 @@ class Algorithm:
             self.protocol = load_protocol(file_generator)
             print('getting stats from protocol train subset...')
             print_stats(self.protocol.stats('train'))
+            print('getting stats from protocol development subset...')
+            print_stats(self.protocol.stats('development'))
 
         scd = "/vol/work2/coria/allies/scd/train/" + \
               "ALLIES.SpeakerDiarization.Official.train/" + \

@@ -4,6 +4,7 @@ from pyannote.core import Annotation, Segment, Timeline
 from warnings import warn
 from pyannote.database.protocol import SpeakerDiarizationProtocol
 from pyannote.database.protocol.protocol import ProtocolFile
+from allies.utils import get_protocols
 
 def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
     annotation = Annotation(uri, modality)
@@ -17,6 +18,7 @@ def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
 def load_protocol(file_generator) -> SpeakerDiarizationProtocol:
         """Given a ProtocolFile generator, instantiate a SpeakerDiarizationProtocol
         which yields the file in the relevant subset_iter
+        depending on the uris returned from get_protocols()
 
         Parameters
         ----------
@@ -28,14 +30,18 @@ def load_protocol(file_generator) -> SpeakerDiarizationProtocol:
         protocol : SpeakerDiarizationProtocol instance
         """
         print("loading data in protocol")
+        protocols = get_protocols()
         class AlliesProtocol(SpeakerDiarizationProtocol):
 
             def trn_iter(self):
                 for current_file in file_generator:
-                    yield current_file
+                    if current_file['uri'] in protocols['train']:
+                        yield current_file
 
             def dev_iter(self):
-                raise NotImplementedError()
+                for current_file in file_generator:
+                    if current_file['uri'] in protocols['development']:
+                        yield current_file
 
             def tst_iter(self):
                 raise NotImplementedError()
