@@ -4,6 +4,7 @@ import struct
 import pickle
 from allies.convert import yield_train, load_protocol
 from allies.utils import print_stats
+from itertools import tee
 
 class Algorithm:
     """
@@ -37,8 +38,11 @@ class Algorithm:
 
         # Load protocol if it's the first time the module runs
         if self.protocol is None:
-            file_generator = yield_train(data_loaders)
-            self.protocol = load_protocol(file_generator)
+            #file_generator_ should not be used directly
+            #use train_generator or dev_generator instead
+            file_generator_ = yield_train(data_loaders)
+            train_generator,dev_generator = tee(file_generator_)
+            self.protocol = load_protocol(train_generator,dev_generator)
             print('getting stats from protocol train subset...')
             print_stats(self.protocol.stats('train'))
             print('getting stats from protocol development subset...')

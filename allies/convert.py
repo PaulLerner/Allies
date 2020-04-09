@@ -15,36 +15,41 @@ def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
         annotation[segment, idx] = speakers.speaker[idx]
     return annotation
 
-def load_protocol(file_generator) -> SpeakerDiarizationProtocol:
+def load_protocol(train_generator,dev_generator) -> SpeakerDiarizationProtocol:
         """Given a ProtocolFile generator, instantiate a SpeakerDiarizationProtocol
         which yields the file in the relevant subset_iter
         depending on the uris returned from get_protocols()
 
         Parameters
         ----------
-        file_generator : generator
+        train_generator,dev_generator : generator
             yields ProtocolFile
+            generator are duplicated this way we can iterate on both of them
+            and filter out files
 
         Returns
         -------
         protocol : SpeakerDiarizationProtocol instance
         """
         print("loading data in protocol")
-        protocols = get_protocols()
+        protocols=get_protocols()
         class AlliesProtocol(SpeakerDiarizationProtocol):
 
             def trn_iter(self):
-                for current_file in file_generator:
+                for current_file in train_generator:
                     if current_file['uri'] in protocols['train']:
                         yield current_file
 
             def dev_iter(self):
-                for current_file in file_generator:
+                for current_file in dev_generator:
                     if current_file['uri'] in protocols['development']:
                         yield current_file
 
             def tst_iter(self):
-                raise NotImplementedError()
+                raise ValueError(
+                    "Initial training protocol doesn't have a test set, "
+                    "you should use `diar_lifelong`"
+                    )
 
         return AlliesProtocol()
 
