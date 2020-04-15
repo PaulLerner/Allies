@@ -1,0 +1,31 @@
+model:
+  emb: /vol/work/lerner/allies/baseline/arcface+variable/train/ALLIES.SpeakerDiarization.Custom.train/validate_diarization_fscore/ALLIES.SpeakerDiarization.Custom.development/
+  scd: /vol/work/lerner/allies/baseline/scd/train/ALLIES.SpeakerDiarization.Custom.train/validate_segmentation_fscore/ALLIES.SpeakerDiarization.Custom.development/
+
+pipeline:
+   name: pyannote.audio.pipeline.speaker_diarization.SpeakerDiarization
+   params:
+      sad_scores: oracle
+      scd_scores: /vol/work/lerner/allies/baseline/scd/train/ALLIES.SpeakerDiarization.Custom.train/validate_segmentation_fscore/ALLIES.SpeakerDiarization.Custom.development/apply/0941
+      embedding: /vol/work/lerner/allies/baseline/arcface+variable/train/ALLIES.SpeakerDiarization.Custom.train/validate_diarization_fscore/ALLIES.SpeakerDiarization.Custom.development/apply/0014/
+      metric: cosine
+      method: affinity_propagation
+      evaluation_only: True
+sampler:
+   name: TPESampler
+
+loss: 0.2039210107946667
+params:
+  min_duration: 1.3741500789542074
+  speech_turn_assignment:
+    closest_assignment:
+      threshold: 1.386325522216855
+  speech_turn_clustering:
+    clustering:
+      damping: 0.6563359660719372
+      preference: -3.5693222647452205
+  speech_turn_segmentation:
+    speaker_change_detection:
+      alpha: 0.00010855909595725022
+      min_duration: 3.5955679739330417
+    speech_activity_detection: {}

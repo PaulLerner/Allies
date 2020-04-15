@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-from pyannote.audio.features import Pretrained
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation
 from pyannote.audio.pipeline import SpeakerDiarization
-
+from pathlib import Path
+import yaml
 
 class Algorithm:
     """
@@ -11,36 +11,30 @@ class Algorithm:
     """
 
     def __init__(self):
-        self.model = None
-        self.serializer = DummySerializer()
-        self.pipeline = None
-        self.hyperparameters = {
-        #AMI hyperparameters from pyannote tutorial
-        #TODO update with ALLIES hyperparameters
-        "pipeline": {
-            "min_duration": 3.306092065580709,
-            "speech_turn_assignment": {
-                "closest_assignment": {
-                    "threshold": 0.8401481964056187
-                }
-            },
-            "speech_turn_clustering": {
-                "clustering": {
-                    "damping": 0.6066098204003955,
-                    "preference": -2.9717704925136976
-                }
-            },
-            "speech_turn_segmentation": {
-                "speaker_change_detection": {
-                    "alpha": 0.11115647156273972,
-                    "min_duration": 0.5283486365753665
-                },
-                # we use oracle SAD from UEM
-                "speech_activity_detection": {}
-                }
-            }
+
+        #load parameters from config yml file
+        with open(Path(__file__).parent/'config.yml') as file:
+            self.parameters = yaml.load(file)
+
+        #use local, evolving model if provided
+        #else relies on precomputed scores
+        self.model = {
+            'scd': self.parameters['model'].get('scd',self.parameters['pipeline']['params']['scd_scores']),
+            'emb': self.parameters['model'].get('emb',self.parameters['pipeline']['params']['embedding'])
         }
 
+        #load pipeline from parameters
+        self.pipeline = SpeakerDiarization(sad_scores='oracle',
+                                           scd_scores=self.model['scd'],
+                                           embedding=self.model['emb'],
+                                           metric = self.parameters['pipeline']['params'].get("metric","cosine"),
+                                           method = self.parameters['pipeline']['params'].get("method","pool"),
+                                           evaluation_only = self.parameters['pipeline']['params'].get("evaluation_only",False),
+                                           purity = self.parameters['pipeline']['params'].get("purity",None)
+                                           )
+
+        #instantiate pipeline from parameters
+        self.pipeline.instantiate(self.parameters['params'])
 
     def process(self, inputs, data_loaders, outputs, loop_channel):
         """
@@ -65,19 +59,6 @@ class Algorithm:
         :param loop_channel: ??
         :return: always True to keep processing
         """
-        # Load model if it's the first time the module runs
-        if self.model is None:
-            model = data_loaders.loaderOf("model")[0][0]['model'].value
-            self.model = self.serializer.deserialize(model)
-
-        # Load pipeline if it's the first time the module runs
-        if self.pipeline is None:
-            # Build diarization pipeline
-            self.pipeline = SpeakerDiarization(sad_scores='oracle',
-                                              scd_scores=self.model['scd'],
-                                              embedding=self.model['emb'])
-            #instantiate pipeline with hyperparameters computed offline
-            self.pipeline.instantiate(self.hyperparameters['pipeline'])
 
         # ALLIES lifelong step inputs
         wave = inputs['features'].data.value
