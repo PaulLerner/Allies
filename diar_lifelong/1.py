@@ -1,9 +1,8 @@
 #!/usr/bin/env python
+from allies.utils import get_params
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation
 from pyannote.audio.pipeline import SpeakerDiarization
-from pathlib import Path
-import yaml
 
 class Algorithm:
     """
@@ -13,8 +12,7 @@ class Algorithm:
     def __init__(self):
 
         #load parameters from config yml file
-        with open(Path(__file__).parent/'config.yml') as file:
-            self.parameters = yaml.load(file)
+        self.parameters = get_params()
 
         #use local, evolving model if provided
         #else relies on precomputed scores
