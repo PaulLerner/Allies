@@ -30,3 +30,12 @@ def get_params():
     with open(HERE/'config.yml') as file:
         params = yaml.load(file)
     return params
+
+def label_generator(references):
+    """Yields ascending integers that are not in references"""
+    label=0
+    labels = references.keys()
+    while True:
+        label+=1
+        if label not in labels:
+            yield label
