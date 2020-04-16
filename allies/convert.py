@@ -166,7 +166,7 @@ class AlliesAnnotation:
           - 'end_time': list[float], end times of speakers in seconds
         """
         speakers, start_times, end_times = [], [], []
-        for segment, _, label in self.annotation.itertracks(yield_labels=True):
+        for segment, _, label in self.annotation.itertracks(yield_label=True):
             speakers.append(label)
             start_times.append(segment.start)
             end_times.append(segment.end)
