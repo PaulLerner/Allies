@@ -74,8 +74,8 @@ class Algorithm:
         # also compute distance thresholds
         if self.identification is None:
             references = get_references("ALLIES.SpeakerDiarization.Custom",
-                                                         self.model['emb'],
-                                                         subsets={'train', 'development'})
+                                        self.model['emb'],
+                                        subsets={'train', 'development'})
             self.thresholds = get_thresholds(references, self.parameters['pipeline']['params'].get("metric","cosine"))
             self.identification = SpeakerIdentification(references,
                                                         sad_scores = 'oracle',
@@ -121,8 +121,7 @@ class Algorithm:
         update_references(file, unknown, self.model['emb'], self.identification.references)
 
         hypothesis = self.identification(file, use_thresholds = False)
-        alliesAnnotation = AlliesAnnotation(hypothesis)
-        alliesAnnotation = alliesAnnotation.to_hypothesis()
+        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # If human assisted learning mode is on (active or interactive learning)
         while human_assisted_learning:
@@ -163,8 +162,7 @@ class Algorithm:
             hypothesis = self.identification(file, use_thresholds = False)
 
             # X. convert hypothesis to AlliesAnnotation
-            alliesAnnotation = AlliesAnnotation(hypothesis)
-            alliesAnnotation = alliesAnnotation.to_hypothesis()
+            alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # End of human assisted learning
         # Send the current hypothesis
