@@ -2,7 +2,7 @@
 from allies.utils import get_params, label_generator
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation
-from allies.distances import get_thresholds
+from allies.distances import get_thresholds, get_farthest
 from pyannote.audio.pipeline import SpeakerDiarization, SpeakerIdentification, update_references, get_references
 import numpy as np
 
@@ -12,6 +12,9 @@ class Algorithm:
     """
 
     def __init__(self):
+        #keep track of segments queried to the user
+        self.queried_segments = {}
+
         self.protocol = "ALLIES.SpeakerDiarization.Custom"
         #load parameters from config yml file
         self.parameters = get_params()
@@ -69,6 +72,8 @@ class Algorithm:
         uem = inputs['processor_uem'].data
         uem = UEM(uem,uri)
         annotated=uem.to_annotation()
+
+        self.queried_segments[uri] = set()
 
         #load references from data_loaders the first time we call process
         # also compute distance thresholds
@@ -134,23 +139,45 @@ class Algorithm:
             request = {
                "request_type": "same",
                "time_1": np.float32(0.5),
-               "time_2": np.float32(1.5),
+               "time_2": np.float32(1.5)
               }
 
             # FFQS-explore unknown based on centroids and thresholds
             if supervision == "active":
-                pass
                 # The system can send a question to the human in the loop
                 # by using an object of type request
                 # The request is the question asked to the system
-                #TODO
-                #request = generate_system_request_to_user(self.model, self.global_diar, current_s4d_segmentation)
+
+                # 1. find segment farthest from all existing clusters
+                _, farthest_segment, farthest_embedding = get_farthest(file,
+                                                                       unknown,
+                                                                       self.model['emb'],
+                                                                       queried_segments = self.queried_segments[uri],
+                                                                       metric=self.parameters['pipeline']['params'].get("metric","cosine"))
+                self.queried_segments[uri].add(farthest_segment)
+                #time_1 is the middle time of the segment we're interested in
+                time_1 = farthest_segment.middle
+
+                #2. find segment closest to the farthest_segment
+                closest = find_closest_to(farthest_segment,
+                                          farthest_embedding,
+                                          file,
+                                          hypothesis,
+                                          self.model['emb'],
+                                          metric=self.parameters['pipeline']['params'].get("metric","cosine"))
+                time_2 = closest.middle
+
+                request = {
+                   "request_type": "same",
+                   "time_1": np.float32(time_1),
+                   "time_2": np.float32(time_2)
+                  }
 
             # Send the request to the user and wait for the answer
             message_to_user = {
                 "file_id": uri,  # ID of the file the question is related to
                 "hypothesis": alliesAnnotation,  # The current hypothesis
-                "system_request": request,  # the question fot the human in the loop
+                "system_request": request,  # the question for the human in the loop
             }
             human_assisted_learning, user_answer = loop_channel.validate(message_to_user)
 
