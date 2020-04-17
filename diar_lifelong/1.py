@@ -12,7 +12,7 @@ class Algorithm:
     """
 
     def __init__(self):
-
+        self.protocol = "ALLIES.SpeakerDiarization.Custom"
         #load parameters from config yml file
         self.parameters = get_params()
         #use local, evolving model if provided
@@ -73,7 +73,9 @@ class Algorithm:
         #load references from data_loaders the first time we call process
         # also compute distance thresholds
         if self.identification is None:
-            references = get_references("ALLIES.SpeakerDiarization.Custom",
+            print(f"loading references from {self.protocol}, this might take a while "
+                   'and requires ~30 GB of RAM')
+            references = get_references(self.protocol,
                                         self.model['emb'],
                                         subsets={'train', 'development'})
             self.thresholds = get_thresholds(references, self.parameters['pipeline']['params'].get("metric","cosine"))
@@ -108,7 +110,8 @@ class Algorithm:
         # 1. assign each segment to the closest reference if close enough
         # else tag with '?'
         # FIXME : use SpeakerIdentification pipeline instead of Diarization
-        hypothesis = self.identification(file, use_thresholds = True)
+        hypothesis = self.identification(file, use_threshold = True)
+        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # cluster '?' (unk)
         unknown = hypothesis.empty()
@@ -116,12 +119,7 @@ class Algorithm:
             if label == '?':
                 unknown[segment, track] = label
         unknown = self.diarization.speech_turn_clustering(file, unknown)
-        unknown.rename_labels(generator=label_generator(),copy=False)
-        # update references with the new clusters
-        update_references(file, unknown, self.model['emb'], self.identification.references)
 
-        hypothesis = self.identification(file, use_thresholds = False)
-        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # If human assisted learning mode is on (active or interactive learning)
         while human_assisted_learning:
@@ -159,10 +157,19 @@ class Algorithm:
             # TODO
             # Take into account the user answer to generate a new hypothesis
             # and possibly update the model
-            hypothesis = self.identification(file, use_thresholds = False)
+            hypothesis = self.identification(file, use_threshold = False)
 
             # X. convert hypothesis to AlliesAnnotation
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
+
+
+        # update references with the new clusters
+        label_gen = label_generator(self.identification.references)
+        unknown.rename_labels(generator=label_gen,copy=False)
+        update_references(file, unknown, self.model['emb'], self.identification.references)
+        #make final hypothesis with the new references
+        hypothesis = self.identification(file, use_threshold = False)
+        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # End of human assisted learning
         # Send the current hypothesis
