@@ -12,9 +12,6 @@ class Algorithm:
     """
 
     def __init__(self):
-        #keep track of segments queried to the user
-        self.queried_segments = {}
-
         self.protocol = "ALLIES.SpeakerDiarization.Custom"
         #load parameters from config yml file
         self.parameters = get_params()
@@ -73,8 +70,6 @@ class Algorithm:
         uem = UEM(uem,uri)
         annotated=uem.to_annotation()
 
-        self.queried_segments[uri] = set()
-
         #load references from data_loaders the first time we call process
         # also compute distance thresholds
         if self.identification is None:
@@ -103,7 +98,8 @@ class Algorithm:
         # Build input to pyannote pipeline
         file = {'waveform': wave,
                 'annotation': uem.to_annotation(),
-                'annotated': uem.to_timeline()
+                'annotated': uem.to_timeline(),
+                'uri': uri
                }
 
         human_assisted_learning = supervision in {"active", "interactive"}
@@ -111,10 +107,8 @@ class Algorithm:
         if not human_assisted_learning:
             #TODO: unsupervised adaptation
             pass
-        # FIXME only predicting speakers, no model updates yet
         # 1. assign each segment to the closest reference if close enough
-        # else tag with '?'
-        # FIXME : use SpeakerIdentification pipeline instead of Diarization
+        # else tag with negative label
         hypothesis = self.identification(file, use_threshold = True)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
@@ -149,10 +143,11 @@ class Algorithm:
                 _, farthest_segment, farthest_embedding = get_farthest(file,
                                                                        unknown,
                                                                        self.model['emb'],
-                                                                       queried_segments = self.queried_segments[uri],
                                                                        metric=self.parameters['pipeline']['params'].get("metric","cosine"))
-                self.queried_segments[uri].add(farthest_segment)
-                #time_1 is the middle time of the segment we're interested in
+                #del farthest_segment from unknown so we don't query it again
+                del unknown[farthest_segment]
+
+                #time_1 is the middle time of the farthest_segment
                 time_1 = farthest_segment.middle
 
                 #2. find segment closest to the farthest_segment
@@ -174,16 +169,14 @@ class Algorithm:
             message_to_user = {
                 "file_id": uri,  # ID of the file the question is related to
                 "hypothesis": alliesAnnotation,  # The current hypothesis
-                "system_request": request,  # the question for the human in the loop
+                "system_request": request  # the question for the human in the loop
             }
             human_assisted_learning, user_answer = loop_channel.validate(message_to_user)
 
             # TODO
             # Take into account the user answer to generate a new hypothesis
             # and possibly update the model
-            hypothesis = self.identification(file, use_threshold = False)
-
-            # X. convert hypothesis to AlliesAnnotation
+            hypothesis = self.identification(file, use_threshold = True)
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
             # cluster < 0 (unk)
@@ -203,7 +196,9 @@ class Algorithm:
         # Send the current hypothesis
         outputs["adapted_speakers"].write(alliesAnnotation)
 
+        # FIXME what is this ?? (from anthony baseline)
         if not inputs.hasMoreData():
             pass
+
         # always return True, it signals BEAT to continue processing
         return True
