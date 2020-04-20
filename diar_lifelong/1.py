@@ -5,6 +5,7 @@ from allies.convert import UEM, AlliesAnnotation
 from allies.distances import get_thresholds, get_farthest
 from pyannote.audio.pipeline import SpeakerDiarization, SpeakerIdentification, update_references, get_references
 import numpy as np
+from pyannote.audio.features.wrapper import Wrapper
 
 class Algorithm:
     """
@@ -23,8 +24,8 @@ class Algorithm:
         }
         #load pipeline from parameters
         self.diarization = SpeakerDiarization(sad_scores = 'oracle',
-                                              scd_scores = self.model['scd'],
-                                              embedding = self.model['emb'],
+                                              scd_scores = '@scd',
+                                              embedding = '@emb',
                                               metric = self.parameters['pipeline']['params'].get("metric","cosine"),
                                               method = self.parameters['pipeline']['params'].get("method","pool"),
                                               evaluation_only = self.parameters['pipeline']['params'].get("evaluation_only",False),
@@ -68,7 +69,6 @@ class Algorithm:
         time_stamp = file_info.time_stamp
         uem = inputs['processor_uem'].data
         uem = UEM(uem,uri)
-        annotated=uem.to_annotation()
 
         #load references from data_loaders the first time we call process
         # also compute distance thresholds
@@ -81,8 +81,8 @@ class Algorithm:
             self.thresholds = get_thresholds(references, self.parameters['pipeline']['params'].get("metric","cosine"))
             self.identification = SpeakerIdentification(references,
                                                         sad_scores = 'oracle',
-                                                        scd_scores = self.model['scd'],
-                                                        embedding = self.model['emb'],
+                                                        scd_scores = '@scd',
+                                                        embedding = '@emb',
                                                         metric = self.parameters['pipeline']['params'].get("metric","cosine"),
                                                         method = self.parameters['pipeline']['params'].get("method","pool"),
                                                         evaluation_only = self.parameters['pipeline']['params'].get("evaluation_only",False))
@@ -101,6 +101,9 @@ class Algorithm:
                 'annotated': uem.to_timeline(),
                 'uri': uri
                }
+        #compute SCD scores and embeddings
+        scd, emb = Wrapper(self.model['scd']), Wrapper(self.model['emb'])
+        file['scd'], file['emb'] = scd(file), emb(file)
 
         human_assisted_learning = supervision in {"active", "interactive"}
 
@@ -142,7 +145,7 @@ class Algorithm:
                 # 1. find segment farthest from all existing clusters
                 _, farthest_segment, farthest_embedding = get_farthest(file,
                                                                        unknown,
-                                                                       self.model['emb'],
+                                                                       '@emb',
                                                                        metric=self.parameters['pipeline']['params'].get("metric","cosine"))
                 #del farthest_segment from unknown so we don't query it again
                 del unknown[farthest_segment]
@@ -155,7 +158,7 @@ class Algorithm:
                                           farthest_embedding,
                                           file,
                                           hypothesis,
-                                          self.model['emb'],
+                                          '@emb',
                                           metric=self.parameters['pipeline']['params'].get("metric","cosine"))
                 time_2 = closest.middle
 
@@ -187,7 +190,7 @@ class Algorithm:
         # update references with the new clusters
         mapping = {label: f'{uri}#{label}' for label in unknown.labels()}
         unknown.rename_labels(mapping=mapping,copy=False)
-        update_references(file, unknown, self.model['emb'], self.identification.references)
+        update_references(file, unknown, '@emb', self.identification.references)
         #make final hypothesis with the new references
         hypothesis = self.identification(file, use_threshold = False)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
