@@ -192,8 +192,8 @@ class Algorithm:
 
 
         # update references with the new clusters
-        label_gen = label_generator(self.identification.references)
-        unknown.rename_labels(generator=label_gen,copy=False)
+        mapping = {label: f'{uri}#{label}' for label in unknown.labels()}
+        unknown.rename_labels(mapping=mapping,copy=False)
         update_references(file, unknown, self.model['emb'], self.identification.references)
         #make final hypothesis with the new references
         hypothesis = self.identification(file, use_threshold = False)
