@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from allies.utils import get_params, label_generator
+from allies.utils import get_params, hypothesis_to_unk
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation
 from allies.distances import get_thresholds, get_farthest
@@ -118,11 +118,8 @@ class Algorithm:
         hypothesis = self.identification(file, use_threshold = True)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
-        # cluster '?' (unk)
-        unknown = hypothesis.empty()
-        for segment, track, label in hypothesis.itertracks(yield_label=True):
-            if label == '?':
-                unknown[segment, track] = label
+        # cluster < 0 (unk)
+        unknown = hypothesis_to_unk(hypothesis)
         unknown = self.diarization.speech_turn_clustering(file, unknown)
 
 
@@ -188,6 +185,10 @@ class Algorithm:
 
             # X. convert hypothesis to AlliesAnnotation
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
+
+            # cluster < 0 (unk)
+            unknown = hypothesis_to_unk(hypothesis)
+            unknown = self.diarization.speech_turn_clustering(file, unknown)
 
 
         # update references with the new clusters

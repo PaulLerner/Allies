@@ -39,3 +39,13 @@ def label_generator(references):
         label+=1
         if label not in labels:
             yield label
+
+def hypothesis_to_unk(hypothesis):
+    """Returns a sub-annotation of hypothesis where all labels are < 0
+    See SpeakerIdentification
+    """
+    unknown = hypothesis.empty()
+    for segment, track, label in hypothesis.itertracks(yield_label=True):
+        if isinstance(label, int) and label < 0:
+            unknown[segment, track] = label
+    return unknown
