@@ -83,9 +83,6 @@ def get_farthest(current_file, hypothesis, model, queried_segments = {}, metric=
     current_file: dict
         file as provided by pyannote protocol
     hypothesis : `Annotation`
-    queried_segments : dict
-        Segments which were already queried,
-        no need to query again
     model: Wrappable
         Describes how raw speaker embeddings should be obtained.
         See pyannote.audio.features.wrapper.Wrapper documentation for details.
@@ -104,19 +101,10 @@ def get_farthest(current_file, hypothesis, model, queried_segments = {}, metric=
                                                                             model,
                                                                             metric=metric)
 
-    speakers, segments, distances = [], [], []
-    for speaker, speaker_segments in distances_per_speaker.items():
-        for segment, distance in speaker_segments.items():
-            #skip segments which were already queried
-            #FIXME : can we use `in` instead of this ugly condition ?
-            if any([queried_segment.intersects(segment) for queried_segment in queried_segments]):
-                continue
-            speakers.append(speaker)
-            segments.append(segment)
-            distances.append(distance)
-
-    i = np.argmin(distances)
-    farthest_speaker, farthest_segment = speakers[i], segments[i]
+    min_per_speaker = {speaker : min(segments, key=segments.get)
+                       for speaker, segments in distances_per_speaker.items()}
+    farthest_speaker = min(min_per_speaker, key=min_per_speaker.get)
+    farthest_segment = min_per_speaker[farthest_speaker]
     farthest_embedding = embeddings_per_speaker[farthest_speaker][farthest_segment]
     return farthest_speaker, farthest_segment, farthest_embedding
 
@@ -135,7 +123,7 @@ def find_closest_to(to_segment, to_embedding, current_file, hypothesis, model, m
     segments, embeddings = [], []
     for speaker, speaker_segments in embeddings_per_speaker.items():
         for segment, embedding in speaker_segments.items():
-            #of course the closest is self
+            #of course the closest is self -> skip self
             if segment.intersects(to_segment):
                 continue
             segments.append(segment)
