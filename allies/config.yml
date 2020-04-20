@@ -14,18 +14,18 @@ pipeline:
 sampler:
    name: TPESampler
 
-loss: 0.2039210107946667
+loss: 0.16090632896238663
 params:
-  min_duration: 1.3741500789542074
+  min_duration: 0.6341458378859106
   speech_turn_assignment:
     closest_assignment:
-      threshold: 1.386325522216855
+      threshold: 0.597488494577604
   speech_turn_clustering:
     clustering:
-      damping: 0.6563359660719372
-      preference: -3.5693222647452205
+      damping: 0.8110575610241849
+      preference: -4.191155431705313
   speech_turn_segmentation:
     speaker_change_detection:
-      alpha: 0.00010855909595725022
-      min_duration: 3.5955679739330417
+      alpha: 4.3199666907123714e-05
+      min_duration: 1.626668986940032
     speech_activity_detection: {}
