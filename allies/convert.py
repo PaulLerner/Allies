@@ -5,6 +5,14 @@ from warnings import warn
 from pyannote.database.protocol import SpeakerDiarizationProtocol
 from pyannote.database.protocol.protocol import ProtocolFile
 from allies.utils import get_protocols
+from pathlib import Path
+import numpy as np
+
+def id_to_file():
+    """Loads 'all.lst' and returns a mapping between normalized file id and real file name"""
+    all_path = Path(__file__).parent/'protocols'/'all.lst'
+    mapping = np.loadtxt(all_path, dtype=str)
+    return {id: file_name for id, file_name in mapping}
 
 def speakers_to_annotation(speakers, uri = None, modality = 'speaker'):
     annotation = Annotation(uri, modality)
