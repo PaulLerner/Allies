@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 from allies.utils import get_params, hypothesis_to_unk
 from allies.serializers import DummySerializer
-from allies.convert import UEM, AlliesAnnotation
-from allies.distances import get_thresholds, get_farthest
+from allies.convert import UEM, AlliesAnnotation, id_to_file
+from allies.distances import get_thresholds, get_farthest, find_closest_to
 from pyannote.audio.pipeline import SpeakerDiarization, SpeakerIdentification, update_references, get_references
 import numpy as np
 from pyannote.audio.features.wrapper import Wrapper
+from pyannote.database import get_protocol
 
 class Algorithm:
     """
@@ -13,7 +14,9 @@ class Algorithm:
     """
 
     def __init__(self):
+        self.database = "ALLIES"
         self.protocol = "ALLIES.SpeakerDiarization.Custom"
+        self.id_to_file = id_to_file()
         #load parameters from config yml file
         self.parameters = get_params()
         #use local, evolving model if provided
@@ -69,12 +72,9 @@ class Algorithm:
         time_stamp = file_info.time_stamp
         uem = inputs['processor_uem'].data
         uem = UEM(uem,uri)
-
         #load references from data_loaders the first time we call process
         # also compute distance thresholds
         if self.identification is None:
-            print(f"loading references from {self.protocol}, this might take a while "
-                   'and requires ~30 GB of RAM')
             references = get_references(self.protocol,
                                         self.model['emb'],
                                         subsets={'train', 'development'})
@@ -84,7 +84,6 @@ class Algorithm:
                                                         scd_scores = '@scd',
                                                         embedding = '@emb',
                                                         metric = self.parameters['pipeline']['params'].get("metric","cosine"),
-                                                        method = self.parameters['pipeline']['params'].get("method","pool"),
                                                         evaluation_only = self.parameters['pipeline']['params'].get("evaluation_only",False))
             params = {
                 'closest_assignment' : {'threshold':self.thresholds['close']},
@@ -99,12 +98,13 @@ class Algorithm:
         file = {'waveform': wave,
                 'annotation': uem.to_annotation(),
                 'annotated': uem.to_timeline(),
-                'uri': uri
+                #pyannote needs the real file name to use precomputed features
+                'uri': self.id_to_file[uri],
+                'database': self.database
                }
         #compute SCD scores and embeddings
         scd, emb = Wrapper(self.model['scd']), Wrapper(self.model['emb'])
         file['scd'], file['emb'] = scd(file), emb(file)
-
         human_assisted_learning = supervision in {"active", "interactive"}
 
         if not human_assisted_learning:
@@ -114,14 +114,13 @@ class Algorithm:
         # else tag with negative label
         hypothesis = self.identification(file, use_threshold = True)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
-
         # cluster < 0 (unk)
         unknown = hypothesis_to_unk(hypothesis)
-        unknown = self.diarization.speech_turn_clustering(file, unknown)
-
+        unknown = self.diarization.speech_turn_clustering(file, unknown) if unknown else unknown
 
         # If human assisted learning mode is on (active or interactive learning)
-        while human_assisted_learning:
+        # and we still have some segments we're unsure about
+        while human_assisted_learning and unknown:
             # Create an empty request that is used to initiate interactive learning
             # For the case of active learning, this request is overwritten by your system itself
             # request_type can be either "same" or "boundary"
@@ -135,13 +134,11 @@ class Algorithm:
                "time_1": np.float32(0.5),
                "time_2": np.float32(1.5)
               }
-
             # FFQS-explore unknown based on centroids and thresholds
             if supervision == "active":
                 # The system can send a question to the human in the loop
                 # by using an object of type request
                 # The request is the question asked to the system
-
                 # 1. find segment farthest from all existing clusters
                 _, farthest_segment, farthest_embedding = get_farthest(file,
                                                                        unknown,
@@ -205,3 +202,61 @@ class Algorithm:
 
         # always return True, it signals BEAT to continue processing
         return True
+
+if __name__ == '__main__':
+    #DEBUG : instantiate Algorithm
+    algorithm=Algorithm()
+    print('instantiated algorithm')
+    references = get_references(algorithm.protocol,
+                algorithm.model['emb'],
+                subsets={'train', 'development'})
+    algorithm.thresholds = get_thresholds(references, algorithm.parameters['pipeline']['params'].get("metric","cosine"))
+    algorithm.identification = SpeakerIdentification(references,
+                        sad_scores = 'oracle',
+                        scd_scores = '@scd',
+                        embedding = '@emb',
+                        metric = algorithm.parameters['pipeline']['params'].get("metric","cosine"),
+                        evaluation_only = algorithm.parameters['pipeline']['params'].get("evaluation_only",False))
+    print('init identification pipeline ok')
+    params = {
+        'closest_assignment' : {'threshold':algorithm.thresholds['close']},
+        'speech_turn_segmentation': algorithm.parameters['params']['speech_turn_segmentation']
+    }
+    algorithm.identification.instantiate(params)
+    print('instantiate pipeline ok')
+    protocol = get_protocol(algorithm.protocol)
+    for file in protocol.test():
+        scd, emb = Wrapper(algorithm.model['scd']), Wrapper(algorithm.model['emb'])
+        print('wrapper init ok')
+        file['scd'], file['emb'] = scd(file), emb(file)
+        hypothesis = algorithm.identification(file, use_threshold = True)
+        print('identification pipeline ok')
+        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
+        print('alliesAnnotation ok')
+        # cluster < 0 (unk)
+        unknown = hypothesis_to_unk(hypothesis)
+        print('hypothesis_to_unk ok')
+        print("len(unknown)",len(unknown))
+        print("unknown.labels()",unknown.labels())
+        print("hypothesis.labels()",hypothesis.labels())
+        unknown = algorithm.diarization.speech_turn_clustering(file, unknown)
+        print('cluster < 0 (unk) ok')
+        # 1. find segment farthest from all existing clusters
+        _, farthest_segment, farthest_embedding = get_farthest(file,
+                                                               unknown,
+                                                               '@emb',
+                                                               metric=algorithm.parameters['pipeline']['params'].get("metric","cosine"))
+        #del farthest_segment from unknown so we don't query it again
+        del unknown[farthest_segment]
+
+        #time_1 is the middle time of the farthest_segment
+        time_1 = farthest_segment.middle
+
+        #2. find segment closest to the farthest_segment
+        closest = find_closest_to(farthest_segment,
+                                  farthest_embedding,
+                                  file,
+                                  hypothesis,
+                                  '@emb',
+                                  metric=algorithm.parameters['pipeline']['params'].get("metric","cosine"))
+        time_2 = closest.middle

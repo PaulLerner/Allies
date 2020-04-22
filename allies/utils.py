@@ -5,6 +5,8 @@ import allies
 import numpy as np
 from pathlib import Path
 import yaml
+from numbers import Number
+
 HERE=Path(allies.__file__).parent
 
 def print_stats(stats):
@@ -42,10 +44,11 @@ def label_generator(references):
 
 def hypothesis_to_unk(hypothesis):
     """Returns a sub-annotation of hypothesis where all labels are < 0
+    Also converts label to `str` because of speech turn clustering pipeline
     See SpeakerIdentification
     """
     unknown = hypothesis.empty()
     for segment, track, label in hypothesis.itertracks(yield_label=True):
-        if isinstance(label, int) and label < 0:
-            unknown[segment, track] = label
+        if isinstance(label, Number) and label < 0:
+            unknown[segment, track] = str(label)
     return unknown
