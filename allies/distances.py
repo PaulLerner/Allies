@@ -164,7 +164,7 @@ def get_distances(references, metric='cosine'):
 
 def stats(distances):
     mean,std=np.mean(distances),np.std(distances)
-    print(f'mean: {mean}\nstd: {std}')
+    print(f'mean: {mean:.2f}\nstd: {std:.2f}')
     print(f'quartiles: {np.quantile(distances, [0,0.25,0.5,0.75,1.0])}')
     return mean
 
