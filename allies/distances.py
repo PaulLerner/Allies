@@ -128,7 +128,7 @@ def find_closest_to(to_segment, to_embedding, current_file, hypothesis, model, m
         See pyannote.audio.features.wrapper.Wrapper documentation for details.
     """
     embeddings_per_speaker=get_embeddings_per_speaker(current_file, hypothesis, model)
-    segments, embeddings = [], []
+    segments, embeddings, speakers = [], [], []
     for speaker, speaker_segments in embeddings_per_speaker.items():
         for segment, embedding in speaker_segments.items():
             #of course the closest is self -> skip self
@@ -136,6 +136,7 @@ def find_closest_to(to_segment, to_embedding, current_file, hypothesis, model, m
                 continue
             segments.append(segment)
             embeddings.append(embedding)
+            speakers.append(speaker)
     #embedding must be 2D to use cdist
     to_embedding = to_embedding.reshape(1,-1)
     embeddings = np.array(embeddings)
@@ -143,7 +144,7 @@ def find_closest_to(to_segment, to_embedding, current_file, hypothesis, model, m
     #reshape distance to the flat array it should be since to_embedding is 1D
     distance = distance.reshape(-1)
     i = np.argmin(distance)
-    return segments[i]
+    return speakers[i], segments[i]
 
 
 

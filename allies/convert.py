@@ -97,7 +97,49 @@ def yield_train(data_loaders):
         }
         yield ProtocolFile(current_file)
 
+class Time:
+    def __init__(self, value):
+        self.value = value
 
+    def in_segment(self, segment):
+        """Boolean function : is self included in segment ?
+
+        Parameters
+        ----------
+        segment : Segment
+        """
+        return (self.value >= segment.start and self.value <= segment.end)
+
+    def __str__(self):
+        seconds = self.value
+        from datetime import timedelta
+        negative = seconds < 0
+        seconds = abs(seconds)
+        td = timedelta(seconds=seconds)
+        seconds = td.seconds + 86400 * td.days
+        microseconds = td.microseconds
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return '%s%02d:%02d:%02d.%03d' % (
+            '-' if negative else ' ', hours, minutes,
+            seconds, microseconds / 1000)
+
+    def find_label(self, annotation):
+        """Returns (segment, track, label) of annotation where self is included
+
+        Raises an error if self is not included in annotation
+
+        Parameters
+        ----------
+        annotation : Annotation
+        """
+        for segment, track, label in annotation.itertracks(yield_label = True):
+            if self.in_segment(segment):
+                return segment, track, label
+        msg = f'time {self} is nowhere to be found in annotation:\n{annotation}'
+        print(msg)
+        raise ValueError(msg)
+        
 class UEM:
     """
     A wrapper of an ALLIES UEM dict.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from allies.utils import get_params, hypothesis_to_unk
 from allies.serializers import DummySerializer
-from allies.convert import UEM, AlliesAnnotation, id_to_file
+from allies.convert import UEM, AlliesAnnotation, id_to_file, Time
 from allies.distances import get_thresholds, get_farthest, find_closest_to
 from pyannote.audio.pipeline import SpeakerDiarization, SpeakerIdentification, update_references, get_references
 import numpy as np
@@ -118,6 +118,8 @@ class Algorithm:
         unknown = hypothesis_to_unk(hypothesis)
         unknown = self.diarization.speech_turn_clustering(file, unknown) if unknown else unknown
 
+        #keep track of segments which come from same (resp. different) speakers
+        positives, negatives = [], []
         # If human assisted learning mode is on (active or interactive learning)
         # and we still have some segments we're unsure about
         while human_assisted_learning and unknown:
@@ -140,10 +142,10 @@ class Algorithm:
                 # by using an object of type request
                 # The request is the question asked to the system
                 # 1. find segment farthest from all existing clusters
-                _, farthest_segment, farthest_embedding = get_farthest(file,
-                                                                       unknown,
-                                                                       '@emb',
-                                                                       metric=self.parameters['pipeline']['params'].get("metric","cosine"))
+                farthest_speaker, farthest_segment, farthest_embedding = get_farthest(file,
+                                                                                      unknown,
+                                                                                      '@emb',
+                                                                                      metric=self.parameters['pipeline']['params'].get("metric","cosine"))
                 #del farthest_segment from unknown so we don't query it again
                 del unknown[farthest_segment]
 
@@ -151,13 +153,13 @@ class Algorithm:
                 time_1 = farthest_segment.middle
 
                 #2. find segment closest to the farthest_segment
-                closest = find_closest_to(farthest_segment,
-                                          farthest_embedding,
-                                          file,
-                                          hypothesis,
-                                          '@emb',
-                                          metric=self.parameters['pipeline']['params'].get("metric","cosine"))
-                time_2 = closest.middle
+                closest_speaker, closest_segment = find_closest_to(farthest_segment,
+                                                                  farthest_embedding,
+                                                                  file,
+                                                                  hypothesis,
+                                                                  '@emb',
+                                                                  metric=self.parameters['pipeline']['params'].get("metric","cosine"))
+                time_2 = closest_segment.middle
 
                 request = {
                    "request_type": "same",
@@ -172,16 +174,70 @@ class Algorithm:
                 "system_request": request  # the question for the human in the loop
             }
             human_assisted_learning, user_answer = loop_channel.validate(message_to_user)
+            response_type = user_answer["response_type"]
+            if response_type == 'stop':
+                #user is tired of us
+                break
+            elif response_type == 'boundary':
+                #TODO: update SCD model or pipeline
+                pass
+            elif response_type == 'same':
+                # Time to segment / hypothesis labels
+                time_1, time_2 = Time(user_answer['time_1']), Time(user_answer['time_2'])
+                same = user_answer["answer"]["value"]
+                if supervision == "active":
+                    if time_1.in_segment(farthest_segment):
+                        s1, l1 = farthest_segment, farthest_speaker
+                    else:
+                        print(f'expected time_1 ({time_1}) to be in '
+                              f'farthest_segment {farthest_segment} as queried')
+                        s1, t1, l1 = time_1.find_label(hypothesis)
+                    if time_2.in_segment(closest_segment):
+                        s2, l2 = closest_segment, closest_speaker
+                    else:
+                        print(f'expected time_2 ({time_2}) to be in '
+                              f'closest_segment {closest_segment} as queried')
+                        s2, t2, l2 = time_2.find_label(hypothesis)
+                else:
+                    s1, t1, l1 = time_1.find_label(hypothesis)
+                    s2, t2, l2 = time_2.find_label(hypothesis)
+                # make use of user answer
+                # TODO: propagate to close segments ?
+                if same:
+                    positives.append((s1,s2))
+                    if supervision == "active":
+                        #system initiative
+                        # relabel queried segment
+                        del hypothesis[s1]
+                        hypothesis[s1] = l2
+                    else:
+                        #user initiative
+                        #prefer already existing references
+                        if l2 in self.identification.references:
+                            del hypothesis[s1]
+                            hypothesis[s1] = l2
+                        elif l1 in self.identification.references:
+                            del hypothesis[s2]
+                            hypothesis[s2] = l1
+                        else:
+                            #merge the two clusters
+                            hypothesis.rename_labels(mapping={l1:l2}, copy=False)
+                            unknown.rename_labels(mapping={l1:l2}, copy=False)
+                else:
+                    negatives.append((s1,s2))
+            else:
+                print(f'got an unexpected response type from user: {response_type}')
 
-            # TODO
-            # Take into account the user answer to generate a new hypothesis
-            # and possibly update the model
-            hypothesis = self.identification(file, use_threshold = True)
+            # TODO: fine-tune embedding model given positives, negatives
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
-            # cluster < 0 (unk)
-            unknown = hypothesis_to_unk(hypothesis)
-            unknown = self.diarization.speech_turn_clustering(file, unknown)
+            # hypothesis = self.identification(file, use_threshold = True)
+            #
+            # # cluster < 0 (unk)
+            # # BEWARE before un-commenting :
+            # # the same segments can be queried again and again if you update unknown
+            # unknown = hypothesis_to_unk(hypothesis)
+            # unknown = self.diarization.speech_turn_clustering(file, unknown)
 
 
         # update references with the new clusters
@@ -224,39 +280,3 @@ if __name__ == '__main__':
     }
     algorithm.identification.instantiate(params)
     print('instantiate pipeline ok')
-    protocol = get_protocol(algorithm.protocol)
-    for file in protocol.test():
-        scd, emb = Wrapper(algorithm.model['scd']), Wrapper(algorithm.model['emb'])
-        print('wrapper init ok')
-        file['scd'], file['emb'] = scd(file), emb(file)
-        hypothesis = algorithm.identification(file, use_threshold = True)
-        print('identification pipeline ok')
-        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
-        print('alliesAnnotation ok')
-        # cluster < 0 (unk)
-        unknown = hypothesis_to_unk(hypothesis)
-        print('hypothesis_to_unk ok')
-        print("len(unknown)",len(unknown))
-        print("unknown.labels()",unknown.labels())
-        print("hypothesis.labels()",hypothesis.labels())
-        unknown = algorithm.diarization.speech_turn_clustering(file, unknown)
-        print('cluster < 0 (unk) ok')
-        # 1. find segment farthest from all existing clusters
-        _, farthest_segment, farthest_embedding = get_farthest(file,
-                                                               unknown,
-                                                               '@emb',
-                                                               metric=algorithm.parameters['pipeline']['params'].get("metric","cosine"))
-        #del farthest_segment from unknown so we don't query it again
-        del unknown[farthest_segment]
-
-        #time_1 is the middle time of the farthest_segment
-        time_1 = farthest_segment.middle
-
-        #2. find segment closest to the farthest_segment
-        closest = find_closest_to(farthest_segment,
-                                  farthest_embedding,
-                                  file,
-                                  hypothesis,
-                                  '@emb',
-                                  metric=algorithm.parameters['pipeline']['params'].get("metric","cosine"))
-        time_2 = closest.middle
