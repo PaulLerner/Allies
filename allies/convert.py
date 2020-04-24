@@ -99,7 +99,7 @@ def yield_train(data_loaders):
 
 class Time:
     def __init__(self, value):
-        self.value = value
+        self.value = float(value)
 
     def in_segment(self, segment):
         """Boolean function : is self included in segment ?
@@ -136,7 +136,7 @@ class Time:
         for segment, track, label in annotation.itertracks(yield_label = True):
             if self.in_segment(segment):
                 return segment, track, label
-        msg = f'time {self} is nowhere to be found in annotation:\n{annotation}'
+        msg = f'time {self} is nowhere to be found in annotation {annotation.uri}'
         print(msg)
         raise ValueError(msg)
         

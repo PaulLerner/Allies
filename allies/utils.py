@@ -9,6 +9,16 @@ from numbers import Number
 
 HERE=Path(allies.__file__).parent
 
+def safe_delete(annotation, segment):
+    """deletes segment from annotation if it exists
+    If not, warns the user
+    """
+    if annotation.get_tracks(segment):
+        del annotation[segment]
+    else:
+        print(f'{segment} is not in '
+              f'{annotation.uri if annotation.uri else "anonymous annotation"}')
+
 def print_stats(stats):
     """Pretty-prints protocol statistics"""
     for key,value in stats.items():
@@ -51,4 +61,5 @@ def hypothesis_to_unk(hypothesis):
     for segment, track, label in hypothesis.itertracks(yield_label=True):
         if isinstance(label, Number) and label < 0:
             unknown[segment, track] = str(label)
-    return unknown
+            del hypothesis[segment, track]
+    return unknown, hypothesis

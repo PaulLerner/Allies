@@ -78,7 +78,8 @@ def get_distances_per_speaker(current_file, hypothesis, model, metric='cosine'):
         distances=np.mean(distances,axis=0)
         for i, segment in enumerate(segments.keys()):
             distances_per_speaker[speaker][segment]=distances[i]
-    return distances_per_speaker, embeddings_per_speaker
+    return distances_per_speaker
+
 
 def get_farthest(current_file, hypothesis, model, metric='cosine'):
     """Finds segment farthest from all existing clusters given :
@@ -93,24 +94,28 @@ def get_farthest(current_file, hypothesis, model, metric='cosine'):
 
     Returns
     -------
-    farthest_speaker: str or int
+    speaker: str or int
         speaker/cluster which contains the farthest segment
-    farthest_segment: pyannote Segment
+    farthest: pyannote Segment
         farthest segment from all existing speakers/clusters
-    farthest_embedding: np.ndarray
-        representation of `farthest_segment` by `model`
+    centroid: pyannote Segment
+        centroid of the cluster containing `farthest`
     """
-    distances_per_speaker, embeddings_per_speaker=get_distances_per_speaker(current_file,
-                                                                            hypothesis,
-                                                                            model,
-                                                                            metric=metric)
+    distances_per_speaker=get_distances_per_speaker(current_file,
+                                                    hypothesis,
+                                                    model,
+                                                    metric=metric)
 
+    #centroids
     min_per_speaker = {speaker : min(segments, key=segments.get)
                        for speaker, segments in distances_per_speaker.items()}
-    farthest_speaker = min(min_per_speaker, key=min_per_speaker.get)
-    farthest_segment = min_per_speaker[farthest_speaker]
-    farthest_embedding = embeddings_per_speaker[farthest_speaker][farthest_segment]
-    return farthest_speaker, farthest_segment, farthest_embedding
+    #farthest segments
+    max_per_speaker = {speaker : max(segments, key=segments.get)
+                       for speaker, segments in distances_per_speaker.items()}
+    #farthest of the farthests segments
+    speaker = max(max_per_speaker, key=max_per_speaker.get)
+    farthest, centroid = max_per_speaker[speaker], min_per_speaker[speaker]
+    return speaker, farthest, centroid
 
 def find_closest_to(to_segment, to_embedding, current_file, hypothesis, model, metric='cosine'):
     """Finds segment closest to another one given :
@@ -177,6 +182,7 @@ def get_thresholds(references, metric='cosine'):
     far = stats(distances[~same_speaker])
     n, bins, patches = plt.hist(distances[~same_speaker],bins=50,density=True,label="different speaker",alpha=0.5)
     plt.hist(distances[same_speaker], bins=bins, density=True,label="same speaker",alpha=0.5)
+    plt.legend()
     title=f"Distributions of {metric} distances between the speech turns embeddings"
     plt.title(title)
     plt.xlabel(f"{metric} distance")
