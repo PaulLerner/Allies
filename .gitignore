@@ -135,3 +135,6 @@ data/
 
 # PyCharm
 .idea/
+
+#pipeline output
+apply/
