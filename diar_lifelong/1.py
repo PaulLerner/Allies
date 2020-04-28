@@ -12,7 +12,7 @@ import allies
 from allies.utils import get_params, hypothesis_to_unk, safe_delete
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation, id_to_file, Time
-from allies.distances import get_thresholds, get_farthest, find_closest_to
+from allies.distances import get_thresholds, get_farthest, find_closest_to, get_centroids
 
 TIMESTAMP = datetime.today().strftime('%Y%m%d-%H%M%S')
 APPLY_DIR = Path(allies.__file__).parent / 'apply'
@@ -140,19 +140,25 @@ class Algorithm:
         # 1. assign each segment to the closest reference if close enough
         # else tag with negative label
         hypothesis = self.identification(file, use_threshold=True)
-        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
+
         # cluster < 0 (unk)
         unknown, hypothesis = hypothesis_to_unk(hypothesis)
         unknown = self.diarization.speech_turn_clustering(file,
                                                           unknown) if unknown else unknown
+        # relabel new clusters so they don't mix with previous ones
+        mapping = {label: f'{uri}#{label}' for label in unknown.labels()
+                   if label not in self.identification.references}
+        unknown.rename_labels(mapping=mapping, copy=False)
+
         # update hypothesis with clustering results
-        # unknown should then only be used to query / keep up with queried segments
+        # unknown should then only be used to keep up with queried segments
         hypothesis = hypothesis.update(unknown)
+        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
         # keep track of segments which come from same (resp. different) speakers
         positives, negatives = [], []
-        # keep track of segments to delete from hypothesis before updating references
-        # don't delete them right away because user might annotate them spontaneously
-        trash = set()
+        # keep track of identification constraints
+        must_link, cannot_link = hypothesis.empty(), hypothesis.empty()
+
         # If human assisted learning mode is on (active or interactive learning)
         # and we still have some segments we're unsure about
         while human_assisted_learning and unknown:
@@ -207,18 +213,8 @@ class Algorithm:
                 time_1, time_2 = Time(user_answer.time_1), Time(user_answer.time_2)
                 same = user_answer.answer.value
                 if active:
-                    if time_1.in_segment(farthest):
-                        s1, l1 = farthest, query_speaker
-                    else:
-                        print(f'expected time_1 ({time_1}) to be in '
-                              f'farthest {farthest} as queried')
-                        s1, t1, l1 = time_1.find_label(hypothesis)
-                    if time_2.in_segment(centroid):
-                        s2, l2 = centroid, query_speaker
-                    else:
-                        print(f'expected time_2 ({time_2}) to be in '
-                              f'centroid {centroid} as queried')
-                        s2, t2, l2 = time_2.find_label(hypothesis)
+                    s1, l1 = farthest, query_speaker
+                    s2, l2 = centroid, query_speaker
                 else:
                     s1, t1, l1 = time_1.find_label(hypothesis)
                     s2, t2, l2 = time_2.find_label(hypothesis)
@@ -232,7 +228,8 @@ class Algorithm:
                         # system initiative -> relabel queried segment
                         del hypothesis[s1]
                         hypothesis[s1] = l2
-                        trash.discard(s1)
+                        # add must-link
+                        must_link[s1] = l2
                         # del queried segment from unknown so we don't query it again
                         safe_delete(unknown, s1)
                     # user initiative -> prefer already existing references
@@ -240,14 +237,16 @@ class Algorithm:
                         print(f'relabel {s1}: {l1} <- {l2}')
                         del hypothesis[s1]
                         hypothesis[s1] = l2
-                        trash.discard(s1)
+                        # add must-link
+                        must_link[s1] = l2
                         # del s1 from unknown so we don't query it
                         safe_delete(unknown, s1)
                     elif l1 in self.identification.references:
                         print(f'relabel {s2}: {l2} <- {l1}')
                         del hypothesis[s2]
                         hypothesis[s2] = l1
-                        trash.discard(s2)
+                        # add must-link
+                        must_link[s2] = l1
                         # del s2 from unknown so we don't query it
                         safe_delete(unknown, s2)
                     else:
@@ -256,43 +255,31 @@ class Algorithm:
                         hypothesis.rename_labels(mapping={l1: l2}, copy=False)
                         # also merge in unknown because it affects in-cluster distances
                         unknown.rename_labels(mapping={l1: l2}, copy=False)
+                        # also in constraints
+                        must_link.rename_labels(mapping={l1: l2}, copy=False)
+                        cannot_link.rename_labels(mapping={l1: l2}, copy=False)
                         # del s1 and s2 from unknown so we don't query them
                         safe_delete(unknown, s1)
                         safe_delete(unknown, s2)
                 else:
                     negatives.append((s1, s2))
-                    # model is wrong -> do something about it
-                    if l1 == l2:
-                        # system initiative : we cannot use queried segment as a reference
-                        if active:
-                            trash.add(s1)
-                            safe_delete(unknown, s1)
-                        # user initiative -> prefer already existing references
-                        elif l2 in self.identification.references:
-                            trash.add(s1)
-                            safe_delete(unknown, s1)
-                        elif l1 in self.identification.references:
-                            trash.add(s2)
-                            safe_delete(unknown, s2)
-                        else:
-                            trash.add(s1)
-                            trash.add(s2)
-                            safe_delete(unknown, s1)
-                            safe_delete(unknown, s2)
+                    # update cannot-links
+                    cannot_link[s1] = l2
+                    cannot_link[s2] = l1
+                    # del s1 and s2 from unknown so we don't query them
+                    safe_delete(unknown, s1)
+                    safe_delete(unknown, s2)
             else:
                 print(f'got an unexpected response type from user: {response_type}')
 
             # TODO: fine-tune embedding model given positives, negatives
+            # convert hypothesis to alliesAnnotation so user understands it
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
-        # update references with the new clusters, previously unknown speakers
-        # remove unreliable segments from hypothesis
-        for segment in trash:
-            del hypothesis[segment]
-        # relabel new clusters so they don't mix with previous ones
-        mapping = {label: f'{uri}#{label}' for label in hypothesis.labels()
-                   if label not in self.identification.references}
-        hypothesis.rename_labels(mapping=mapping, copy=False)
-        update_references(file, hypothesis, '@emb', self.identification.references)
+
+        # update references with centroids and must_link
+        centroids = get_centroids(file, hypothesis, '@emb', metric='cosine')
+        update_references(file, centroids, '@emb', self.identification.references)
+        update_references(file, must_link, '@emb', self.identification.references)
 
         # make final hypothesis with the new references
         hypothesis = self.identification(file, use_threshold=False)
