@@ -80,6 +80,34 @@ def get_distances_per_speaker(current_file, hypothesis, model, metric='cosine'):
             distances_per_speaker[speaker][segment]=distances[i]
     return distances_per_speaker
 
+def get_centroids(current_file, annotation, model, metric='cosine'):
+    """Finds the centroids of an annotation
+    Parameters
+    ----------
+    current_file: dict
+        file as provided by pyannote protocol
+    annotation : `Annotation`
+    model: Wrappable
+        Describes how raw speaker embeddings should be obtained.
+        See pyannote.audio.features.wrapper.Wrapper documentation for details.
+
+    Returns
+    -------
+    centroids: Annotation
+    """
+    distances_per_speaker = get_distances_per_speaker(current_file,
+                                                      annotation,
+                                                      model,
+                                                      metric=metric)
+
+    # centroids
+    centroids = annotation.empty()
+    for speaker, segments in distances_per_speaker.items():
+        centroid = min(segments)
+        centroids[centroid, speaker] = speaker
+
+    return centroids
+
 
 def get_farthest(current_file, hypothesis, model, metric='cosine'):
     """Finds segment farthest from all existing clusters given :
