@@ -57,9 +57,8 @@ def hypothesis_to_unk(hypothesis):
     Also converts label to `str` because of speech turn clustering pipeline
     See SpeakerIdentification
     """
-    unknown = hypothesis.empty()
-    for segment, track, label in hypothesis.itertracks(yield_label=True):
-        if isinstance(label, Number) and label < 0:
-            unknown[segment, track] = str(label)
-            del hypothesis[segment, track]
+    unknown_labels = [label for label in hypothesis.labels()
+                      if isinstance(label, Number) and label < 0]
+    unknown = hypothesis.subset(unknown_labels, invert = False)
+    hypothesis = hypothesis.subset(unknown_labels, invert = True)
     return unknown, hypothesis
