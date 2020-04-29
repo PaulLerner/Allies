@@ -54,7 +54,21 @@ def hypothesis_to_unk(hypothesis):
     return unknown, hypothesis
 
 def relabel_unknown(hypothesis):
-    """Relabels unknown segments (i.e. with a `Number` label) with a unique label"""
+    """Relabels unknown segments (i.e. with a `Number` label) with a unique label
+
+    e.g.
+    >>> print(annotation)
+    [ 00:00:00.000 -->  00:00:01.000] _ bob
+    [ 00:00:01.000 -->  00:00:02.000] _ 0
+    [ 00:00:02.000 -->  00:00:03.000] _ 0
+
+    >>> print(relabel_unknown(annotation))
+    [ 00:00:00.000 -->  00:00:01.000] _ bob
+    [ 00:00:01.000 -->  00:00:02.000] _ 1
+    [ 00:00:02.000 -->  00:00:03.000] _ 2
+
+    """
     for i, (segment, track, label) in enumerate(hypothesis.itertracks(yield_label=True)):
         if isinstance(label, Number):
             hypothesis[segment, track] = i
+    return hypothesis
