@@ -43,15 +43,6 @@ def get_params():
         params = yaml.load(file)
     return params
 
-def label_generator(references):
-    """Yields ascending integers that are not in references"""
-    label=0
-    labels = references.keys()
-    while True:
-        label+=1
-        if label not in labels:
-            yield label
-
 def hypothesis_to_unk(hypothesis):
     """Returns a sub-annotation of hypothesis where all labels are < 0
     See SpeakerIdentification
@@ -61,3 +52,9 @@ def hypothesis_to_unk(hypothesis):
     unknown = hypothesis.subset(unknown_labels, invert = False)
     hypothesis = hypothesis.subset(unknown_labels, invert = True)
     return unknown, hypothesis
+
+def relabel_unknown(hypothesis):
+    """Relabels unknown segments (i.e. with a `Number` label) with a unique label"""
+    for i, (segment, track, label) in enumerate(hypothesis.itertracks(yield_label=True)):
+        if isinstance(label, Number):
+            hypothesis[segment, track] = i

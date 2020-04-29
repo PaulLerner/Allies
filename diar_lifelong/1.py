@@ -9,7 +9,7 @@ from pyannote.audio.features.wrapper import Wrapper
 from pyannote.database import get_protocol
 
 import allies
-from allies.utils import get_params, hypothesis_to_unk, safe_delete
+from allies.utils import get_params, hypothesis_to_unk, relabel_unknown
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation, id_to_file, Time
 from allies.distances import get_thresholds, get_farthest, find_closest_to, get_centroids
@@ -126,31 +126,20 @@ class Algorithm:
             # TODO: unsupervised adaptation
             pass
         # 1. assign each segment to the closest reference if close enough
-        # else tag with negative label
+        # else tag with negative `int` label
         hypothesis = self.identification(file, use_threshold=True)
 
-        # cluster < 0 (unk)
-        unknown, hypothesis = hypothesis_to_unk(hypothesis)
-        # convert unknown labels to `str` because of speech turn clustering pipeline
-        unknown.rename_labels(generator='string', copy=False)
-        unknown = self.diarization.speech_turn_clustering(file, unknown) if unknown else unknown
-        # relabel new clusters so they don't mix with previous ones
-        mapping = {label: f'{uri}#{label}' for label in unknown.labels()
-                   if label not in self.identification.references}
-        unknown.rename_labels(mapping=mapping, copy=False)
-
-        # update hypothesis with clustering results
-        # unknown should then only be used to keep up with queried segments
-        hypothesis = hypothesis.update(unknown)
+        # cluster speakers (taking into account identified ones)
+        hypothesis = self.diarization.speech_turn_clustering(file, hypothesis)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
+
         # keep track of segments which come from same (resp. different) speakers
         positives, negatives = [], []
-        # keep track of identification constraints
-        must_link, cannot_link = hypothesis.empty(), hypothesis.empty()
+        # keep track of clustering constraints
+        cannot_link = {}
 
         # If human assisted learning mode is on (active or interactive learning)
-        # and we still have some segments we're unsure about
-        while human_assisted_learning and unknown:
+        while human_assisted_learning:
             # Create an empty request that is used to initiate interactive learning
             # For the case of active learning, this request is overwritten by your system itself
             # request_type can be either "same" or "boundary"
@@ -164,14 +153,15 @@ class Algorithm:
                 "time_1": np.float32(0.5),
                 "time_2": np.float32(1.5)
             }
-            # FFQS-explore unknown based on centroids and thresholds
+            # FFQS-explore hypothesis based on centroids and thresholds
             if active:
                 # The system can send a question to the human in the loop
                 # by using an object of type request
                 # The request is the question asked to the system
-                # find segment farthest from all existing clusters in unknown speakers
+
+                # find segment farthest from all existing clusters in the current hypothesis
                 query_speaker, farthest, centroid = get_farthest(file,
-                                                                 unknown,
+                                                                 hypothesis,
                                                                  '@emb',
                                                                  metric=self.metric)
                 time_1, time_2 = farthest.middle, centroid.middle
@@ -215,73 +205,71 @@ class Algorithm:
                     positives.append((s1, s2))
                     if active:
                         # system initiative -> relabel queried segment
+                        # 1. convert centroid label to string so both segments are merged
+                        if not isinstance(l2, str):
+                            l2 = str(l2)
+                            del hypothesis[s2]
+                            hypothesis[s2] = l2
                         print(f'relabel {s1}: {l1} <- {l2}')
+                        # 2. relabel queried segment
                         del hypothesis[s1]
                         hypothesis[s1] = l2
-                        # add must-link
-                        must_link[s1] = l2
-                        # del queried segment from unknown so we don't query it again
-                        safe_delete(unknown, s1)
                     # user initiative -> prefer already existing references
                     elif l2 in self.identification.references:
                         print(f'relabel {s1}: {l1} <- {l2}')
                         del hypothesis[s1]
                         hypothesis[s1] = l2
-                        # add must-link
-                        must_link[s1] = l2
-                        # del s1 from unknown so we don't query it
-                        safe_delete(unknown, s1)
                     elif l1 in self.identification.references:
                         print(f'relabel {s2}: {l2} <- {l1}')
                         del hypothesis[s2]
                         hypothesis[s2] = l1
-                        # add must-link
-                        must_link[s2] = l1
-                        # del s2 from unknown so we don't query it
-                        safe_delete(unknown, s2)
                     else:
-                        # merge the two clusters
-                        print(f'merge the two clusters: {l1} <- {l2}')
-                        hypothesis.rename_labels(mapping={l1: l2}, copy=False)
-                        # also merge in unknown because it affects in-cluster distances
-                        unknown.rename_labels(mapping={l1: l2}, copy=False)
-                        # also in constraints
-                        must_link.rename_labels(mapping={l1: l2}, copy=False)
-                        cannot_link.rename_labels(mapping={l1: l2}, copy=False)
-                        # del s1 and s2 from unknown so we don't query them
-                        safe_delete(unknown, s1)
-                        safe_delete(unknown, s2)
+                        # create a new `str` label so both segments are merged
+                        new_label = f'{l1}@{l2}'
+                        print(f'relabel {s1}: {l1} <- {new_label}')
+                        print(f'relabel {s2}: {l2} <- {new_label}')
+                        del hypothesis[s1]
+                        del hypothesis[s2]
+                        hypothesis[s1] = new_label
+                        hypothesis[s2] = new_label
+                        # rename str(l1) -> new_label in case it already exists to propagate
+                        # annotations. Note that we enforce `str` so we don't relabel
+                        # other segments in the hypothetic un-indentified cluster l1
+                        hypothesis.rename_labels(mapping={str(l1):new_label}, copy=False)
+                        hypothesis.rename_labels(mapping={str(l2):new_label}, copy=False)
+
                 else:
                     negatives.append((s1, s2))
-                    print(f'cannot-link {s1}: {l2}\n\t\t{s2}: {l1}')
+                    print(f'cannot-link {s1} : {s2}')
                     # update cannot-links
-                    cannot_link[s1] = l2
-                    cannot_link[s2] = l1
-                    # del s1 and s2 from unknown so we don't query them
-                    safe_delete(unknown, s1)
-                    safe_delete(unknown, s2)
+                    cannot_link.setdefault(s1, [])
+                    cannot_link[s1].append(s2)
             else:
                 print(f'got an unexpected response type from user: {response_type}')
 
             # TODO: fine-tune embedding model given positives, negatives
-            # convert hypothesis to alliesAnnotation so user understands it
+            # update hypothesis with constraints
+            # 1. relabel unknown segments with a unique label so they're not merged together
+            hypothesis = relabel_unknown(hypothesis)
+            # 2. apply the actual pipeline
+            hypothesis = self.diarization.speech_turn_clustering(file, hypothesis,
+                                                                 cannot_link = cannot_link)
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
-        # update references with centroids and must_link
-        centroids = get_centroids(file, hypothesis, '@emb', metric='cosine')
-        update_references(file, centroids, '@emb', self.identification.references)
-        update_references(file, must_link, '@emb', self.identification.references)
-
-        # make final hypothesis with the new references
-        hypothesis = self.identification(file, use_threshold=False)
         # write hypothesis locally to a time-stamped file
         with open(SAVE_TO, 'a') as file:
             hypothesis.write_rttm(file)
-        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # End of human assisted learning
         # Send the current hypothesis
         outputs["adapted_speakers"].write(alliesAnnotation)
+
+        # update references with new clusters and newly identified speakers
+        # relabel new clusters so they don't mix with previous ones
+        mapping = {label: f'{uri}#{label}' for label in hypothesis.labels()
+                   if label not in self.identification.references}
+        hypothesis.rename_labels(mapping=mapping, copy=False)
+        update_references(file, hypothesis, '@emb', self.identification.references)
 
         # FIXME what is this ?? (from anthony baseline)
         if not inputs.hasMoreData():
