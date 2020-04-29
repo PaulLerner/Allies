@@ -35,33 +35,45 @@ class Algorithm:
         # use local, evolving model if provided
         # else relies on precomputed scores
         self.model = {
-            'scd': self.parameters['model'].get('scd',
-                                                self.parameters['pipeline']['params'][
-                                                    'scd_scores']),
-            'emb': self.parameters['model'].get('emb',
-                                                self.parameters['pipeline']['params'][
-                                                    'embedding'])
+            'scd': self.parameters.get('model',{}).get('scd',self.parameters['pipeline']['params']['scd_scores']),
+            'emb': self.parameters.get('model',{}).get('emb',self.parameters['pipeline']['params']['embedding'])
         }
-        # load pipeline from parameters
+        # load diarization pipeline from parameters
         self.metric = self.parameters['pipeline']['params'].get("metric", "cosine")
-        self.clustering_method = self.parameters['pipeline']['params'].get("method",
-                                                                           "affinity_propagation")
-        self.evaluation_only = self.parameters['pipeline']['params'].get(
-            "evaluation_only", True)
+        self.clustering_method = self.parameters['pipeline']['params'].get("method", "affinity_propagation")
+        self.evaluation_only = self.parameters['pipeline']['params'].get("evaluation_only", True)
         self.diarization = SpeakerDiarization(sad_scores='oracle',
                                               scd_scores='@scd',
                                               embedding='@emb',
                                               metric=self.metric,
                                               method=self.clustering_method,
                                               evaluation_only=self.evaluation_only,
-                                              purity=self.parameters['pipeline'][
-                                                  'params'].get("purity"))
+                                              purity=self.parameters['pipeline']['params'].get("purity"))
 
         # instantiate pipeline from parameters
         self.diarization.instantiate(self.parameters['params'])
 
-        # identification pipeline is instantiated the first time process is called
-        self.identification = None
+        args = self.parameters.get('identification',{})
+        # load identification pipeline from parameters
+        references = get_references(self.protocol,
+                                    self.model['emb'],
+                                    args.get('subsets',{'train', 'development'}),
+                                    label_min_duration=args.get('label_min_duration', 0.0))
+        # use thresholds tuned on dev set
+        # self.thresholds = get_thresholds(references, self.metric)
+        self.identification = KNearestSpeakers(references,
+                                               sad_scores='oracle',
+                                               scd_scores='@scd',
+                                               embedding='@emb',
+                                               metric=self.metric,
+                                               evaluation_only=self.evaluation_only,
+                                               confusion=False,
+                                               weigh=args.get('weigh', True))
+        params = {
+            'classifier': args['classifier'],
+            'speech_turn_segmentation': self.parameters['params']['speech_turn_segmentation']
+        }
+        self.identification.instantiate(params)
 
     def process(self, inputs, data_loaders, outputs, loop_channel):
         """
@@ -87,6 +99,7 @@ class Algorithm:
             Used to interact with the user
         :return: always True to keep processing
         """
+        
         # ALLIES lifelong step inputs
         wave = inputs['features'].data.value
         file_info = inputs["processor_file_info"].data
@@ -95,31 +108,6 @@ class Algorithm:
         time_stamp = file_info.time_stamp
         uem = inputs['processor_uem'].data
         uem = UEM(uem, uri)
-        # load references from data_loaders the first time we call process
-        # also compute distance thresholds
-        if self.identification is None:
-            references = get_references(self.protocol,
-                                        self.model['emb'],
-                                        subsets={'train', 'development'})
-            # use thresholds tuned on dev set
-            # self.thresholds = get_thresholds(references, self.metric)
-            self.identification = KNearestSpeakers(references,
-                                                   sad_scores='oracle',
-                                                   scd_scores='@scd',
-                                                   embedding='@emb',
-                                                   metric=self.metric,
-                                                   evaluation_only=self.evaluation_only,
-                                                   confusion=False)
-            params = {
-                'classifier': {'k': 48,
-                               'threshold': 0.2360556167967878},
-                'speech_turn_segmentation': self.parameters['params'][
-                    'speech_turn_segmentation']
-            }
-            self.identification.instantiate(params)
-        else:
-            # TODO: update SpeakerIdentification thresholds if embedding model is evolving
-            pass
 
         # Build input to pyannote pipeline
         file = {'waveform': wave,
@@ -143,8 +131,9 @@ class Algorithm:
 
         # cluster < 0 (unk)
         unknown, hypothesis = hypothesis_to_unk(hypothesis)
-        unknown = self.diarization.speech_turn_clustering(file,
-                                                          unknown) if unknown else unknown
+        # convert unknown labels to `str` because of speech turn clustering pipeline
+        unknown.rename_labels(generator='string', copy=False)
+        unknown = self.diarization.speech_turn_clustering(file, unknown) if unknown else unknown
         # relabel new clusters so they don't mix with previous ones
         mapping = {label: f'{uri}#{label}' for label in unknown.labels()
                    if label not in self.identification.references}
@@ -226,6 +215,7 @@ class Algorithm:
                     positives.append((s1, s2))
                     if active:
                         # system initiative -> relabel queried segment
+                        print(f'relabel {s1}: {l1} <- {l2}')
                         del hypothesis[s1]
                         hypothesis[s1] = l2
                         # add must-link
@@ -263,6 +253,7 @@ class Algorithm:
                         safe_delete(unknown, s2)
                 else:
                     negatives.append((s1, s2))
+                    print(f'cannot-link {s1}: {l2}\n\t\t{s2}: {l1}')
                     # update cannot-links
                     cannot_link[s1] = l2
                     cannot_link[s2] = l1
@@ -296,50 +287,123 @@ class Algorithm:
         if not inputs.hasMoreData():
             pass
 
+        print('\n\n')
         # always return True, it signals BEAT to continue processing
         return True
 
 
 if __name__ == '__main__':
-    from pyannote.core import Annotation, Segment
 
-    s = Segment(0, 1)
-    a = Annotation()
-    a[s] = 'foo'
-    t_ok = Time(0.5)
-    t_out = Time(100)
-    print(t_ok.in_segment(s))
-    print(t_out.in_segment(s))
-    print(t_ok.find_label(a))
-    print(t_out.find_label(a))
-    assert False
-
+    # s = Segment(0, 1)
+    # a = Annotation()
+    # a[s] = 'foo'
+    # t_ok = Time(0.5)
+    # t_out = Time(100)
+    # print(t_ok.in_segment(s))
+    # print(t_out.in_segment(s))
+    # print(t_ok.find_label(a))
+    # print(t_out.find_label(a))
     # DEBUG : instantiate Algorithm
     algorithm = Algorithm()
     print('instantiated algorithm')
     references = get_references(algorithm.protocol,
                                 algorithm.model['emb'],
                                 subsets={'train', 'development'})
-    algorithm.thresholds = get_thresholds(references,
-                                          algorithm.parameters['pipeline']['params'].get(
-                                              "metric", "cosine"))
-    algorithm.identification = SpeakerIdentification(references,
-                                                     sad_scores='oracle',
-                                                     scd_scores='@scd',
-                                                     embedding='@emb',
-                                                     metric=
-                                                     algorithm.parameters['pipeline'][
-                                                         'params'].get("metric",
-                                                                       "cosine"),
-                                                     evaluation_only=
-                                                     algorithm.parameters['pipeline'][
-                                                         'params'].get("evaluation_only",
-                                                                       False))
+    algorithm.identification = algorithm.identification = KNearestSpeakers(references,
+                                                   sad_scores='oracle',
+                                                   scd_scores='@scd',
+                                                   embedding='@emb',
+                                                   metric=algorithm.metric,
+                                                   evaluation_only=algorithm.evaluation_only,
+                                                   confusion=False,
+                                                   weigh=True)
     print('init identification pipeline ok')
     params = {
-        'closest_assignment': {'threshold': algorithm.thresholds['close']},
-        'speech_turn_segmentation': algorithm.parameters['params'][
-            'speech_turn_segmentation']
+        'classifier': {'k': 28,
+                       'threshold': 0.01946402570018635},
+        'speech_turn_segmentation': algorithm.parameters['params']['speech_turn_segmentation']
     }
     algorithm.identification.instantiate(params)
     print('instantiate pipeline ok')
+    protocol = get_protocol(algorithm.protocol)
+    for file in protocol.test():
+        uri = file['uri']
+        print(uri)
+        # compute SCD scores and embeddings
+        scd, emb = Wrapper(algorithm.model['scd']), Wrapper(algorithm.model['emb'])
+        file['scd'], file['emb'] = scd(file), emb(file)
+        human_assisted_learning = True
+        active = True
+        if not human_assisted_learning:
+            # TODO: unsupervised adaptation
+            pass
+        # 1. assign each segment to the closest reference if close enough
+        # else tag with negative label
+        hypothesis = algorithm.identification(file, use_threshold=True)
+
+        # cluster < 0 (unk)
+        unknown, hypothesis = hypothesis_to_unk(hypothesis)
+        mapping = {label: str(label) for label in unknown.labels()}
+        unknown.rename_labels(mapping=mapping, copy=False)
+        unknown = algorithm.diarization.speech_turn_clustering(file,
+                                                          unknown) if unknown else unknown
+        # relabel new clusters so they don't mix with previous ones
+        mapping = {label: f'{uri}#{label}' for label in unknown.labels()
+                   if label not in algorithm.identification.references}
+        unknown.rename_labels(mapping=mapping, copy=False)
+
+        # update hypothesis with clustering results
+        # unknown should then only be used to keep up with queried segments
+        hypothesis = hypothesis.update(unknown)
+        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
+        # keep track of segments which come from same (resp. different) speakers
+        positives, negatives = [], []
+        # keep track of identification constraints
+        must_link, cannot_link = hypothesis.empty(), hypothesis.empty()
+
+        # If human assisted learning mode is on (active or interactive learning)
+        # and we still have some segments we're unsure about
+        while human_assisted_learning and unknown:
+            # Create an empty request that is used to initiate interactive learning
+            # For the case of active learning, this request is overwritten by your system itself
+            # request_type can be either "same" or "boundary"
+            # if "same", the question asked to the user is: Is the same speaker speaking at time time_1 and time_2
+            #            the cost of this question is 6s / total_file_duration
+            # if "boundary" the question asked to the user is: What are the boundaries of the segment including time_1
+            #            note that the data time_2 is not used in this request
+            #            the cost of this question is (|time_2 - time_1| + 6s) / total_file_duration
+            request = {
+                "request_type": "same",
+                "time_1": np.float32(0.5),
+                "time_2": np.float32(1.5)
+            }
+            # FFQS-explore unknown based on centroids and thresholds
+            if active:
+                # The system can send a question to the human in the loop
+                # by using an object of type request
+                # The request is the question asked to the system
+                # find segment farthest from all existing clusters in unknown speakers
+                query_speaker, farthest, centroid = get_farthest(file,
+                                                                 unknown,
+                                                                 '@emb',
+                                                                 metric=algorithm.metric)
+                time_1, time_2 = farthest.middle, centroid.middle
+                # is this farthest segment in the right cluster ?
+                request = {
+                    "request_type": "same",
+                    "time_1": np.float32(time_1),
+                    "time_2": np.float32(time_2)
+                }
+
+            # Send the request to the user and wait for the answer
+            message_to_user = {
+                "file_id": uri,  # ID of the file the question is related to
+                "hypothesis": alliesAnnotation,  # The current hypothesis
+                "system_request": request  # the question for the human in the loop
+            }
+            break
+
+        centroids = get_centroids(file, hypothesis, '@emb', metric='cosine')
+        break
+
+

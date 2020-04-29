@@ -54,7 +54,6 @@ def label_generator(references):
 
 def hypothesis_to_unk(hypothesis):
     """Returns a sub-annotation of hypothesis where all labels are < 0
-    Also converts label to `str` because of speech turn clustering pipeline
     See SpeakerIdentification
     """
     unknown_labels = [label for label in hypothesis.labels()
