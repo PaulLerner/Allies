@@ -9,7 +9,7 @@ from pyannote.audio.features.wrapper import Wrapper
 from pyannote.database import get_protocol
 
 import allies
-from allies.utils import get_params, hypothesis_to_unk, relabel_unknown
+from allies.utils import get_params, hypothesis_to_unk, relabel_unknown, mutual_cl
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation, id_to_file, Time
 from allies.distances import get_thresholds, get_farthest, find_closest_to, get_centroids
@@ -243,8 +243,8 @@ class Algorithm:
                     negatives.append((s1, s2))
                     print(f'cannot-link {s1} : {s2}')
                     # update cannot-links
-                    cannot_link.setdefault(s1, [])
-                    cannot_link[s1].append(s2)
+                    cannot_link.setdefault(s1, set())
+                    cannot_link[s1].add(s2)
             else:
                 print(f'got an unexpected response type from user: {response_type}')
 
