@@ -235,7 +235,7 @@ class Algorithm:
                         hypothesis[s2] = new_label
                         # rename str(l1) -> new_label in case it already exists to propagate
                         # annotations. Note that we enforce `str` so we don't relabel
-                        # other segments in the hypothetic un-indentified cluster l1
+                        # other segments in the hypothetical un-indentified cluster l1
                         hypothesis.rename_labels(mapping={str(l1):new_label}, copy=False)
                         hypothesis.rename_labels(mapping={str(l2):new_label}, copy=False)
 

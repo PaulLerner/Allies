@@ -89,12 +89,12 @@ def relabel_unknown(hypothesis):
     """Relabels unknown segments (i.e. with a `Number` label) with a unique label
 
     e.g.
-    >>> print(annotation)
+    >>> print(hypothesis)
     [ 00:00:00.000 -->  00:00:01.000] _ bob
     [ 00:00:01.000 -->  00:00:02.000] _ 0
     [ 00:00:02.000 -->  00:00:03.000] _ 0
 
-    >>> print(relabel_unknown(annotation))
+    >>> print(relabel_unknown(hypothesis))
     [ 00:00:00.000 -->  00:00:01.000] _ bob
     [ 00:00:01.000 -->  00:00:02.000] _ 1
     [ 00:00:02.000 -->  00:00:03.000] _ 2
