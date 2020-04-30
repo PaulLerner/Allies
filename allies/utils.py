@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 import yaml
 from numbers import Number
+from typing import Text
 
 HERE=Path(allies.__file__).parent
 
@@ -52,6 +53,37 @@ def hypothesis_to_unk(hypothesis):
     unknown = hypothesis.subset(unknown_labels, invert = False)
     hypothesis = hypothesis.subset(unknown_labels, invert = True)
     return unknown, hypothesis
+
+def mutual_cl(hypothesis):
+    """Mutually cannot-link identified speakers (tagged with a `Text` label)
+
+    Parameters
+    ----------
+    hypothesis: Annotation
+        hypothesis with identified speakers tagged with a `Text` label
+
+    Returns
+    -------
+    cannot_link: dict
+        Clustering constraints, a dict like:
+        {Segment : Set[Segment]}, where segments should not be clustered together
+    """
+
+    cannot_link = {}
+    for label in hypothesis.labels():
+        if not isinstance(label, Text):
+            continue
+        timeline = hypothesis.label_timeline(label, copy=False)
+        for segment in timeline:
+            cannot_link.setdefault(segment, set())
+            # get all other segments from other identified speakers
+            for other_speaker in hypothesis.labels():
+                if not isinstance(other_speaker, Text) or other_speaker == label:
+                    continue
+                other_timeline = hypothesis.label_timeline(other_speaker, copy=False)
+                cannot_link[segment].update(other_timeline.segments_set_)
+
+    return cannot_link
 
 def relabel_unknown(hypothesis):
     """Relabels unknown segments (i.e. with a `Number` label) with a unique label

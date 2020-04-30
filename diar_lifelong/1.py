@@ -129,14 +129,15 @@ class Algorithm:
         # else tag with negative `int` label
         hypothesis = self.identification(file, use_threshold=True)
 
+        # mutually cannot-link identified speakers
+        cannot_link = mutual_cl(hypothesis)
+
         # cluster speakers (taking into account identified ones)
         hypothesis = self.diarization.speech_turn_clustering(file, hypothesis)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # keep track of segments which come from same (resp. different) speakers
         positives, negatives = [], []
-        # keep track of clustering constraints
-        cannot_link = {}
 
         # If human assisted learning mode is on (active or interactive learning)
         while human_assisted_learning:
