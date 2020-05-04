@@ -139,11 +139,8 @@ class Algorithm:
         cannot_link = mutual_cl(hypothesis)
 
         # cluster speakers (taking into account identified ones)
-        try:
-            hypothesis = self.diarization.speech_turn_clustering(file, hypothesis,
-                                                                 cannot_link = cannot_link)
-        except Exception as e:
-            print(e)
+        hypothesis = self.diarization.speech_turn_clustering(file, hypothesis,
+                                                             cannot_link = cannot_link)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # keep track of segments which come from same (resp. different) speakers
