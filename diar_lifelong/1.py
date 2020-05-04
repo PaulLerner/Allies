@@ -54,28 +54,6 @@ class Algorithm:
         # instantiate pipeline from parameters
         self.diarization.instantiate(self.parameters['params'])
 
-        args = self.parameters.get('identification',{})
-        # load identification pipeline from parameters
-        references = get_references(self.protocol,
-                                    self.model['emb'],
-                                    args.get('subsets',{'train', 'development'}),
-                                    label_min_duration=args.get('label_min_duration', 0.0))
-        # use thresholds tuned on dev set
-        # self.thresholds = get_thresholds(references, self.metric)
-        self.identification = KNearestSpeakers(references,
-                                               sad_scores='oracle',
-                                               scd_scores='@scd',
-                                               embedding='@emb',
-                                               metric=self.metric,
-                                               evaluation_only=self.evaluation_only,
-                                               purity=None,
-                                               weigh=args.get('weigh', True))
-        params = {
-            'classifier': args['classifier'],
-            'speech_turn_segmentation': self.parameters['params']['speech_turn_segmentation']
-        }
-        self.identification.instantiate(params)
-
     def process(self, inputs, data_loaders, outputs, loop_channel):
         """
         Execute one step of the lifelong process:
@@ -131,19 +109,12 @@ class Algorithm:
         if not human_assisted_learning:
             pass
 
-        # 1. assign each segment to the closest reference if close enough
-        # else tag with negative `int` label
-        hypothesis = self.identification(file, use_threshold=True)
-
-        # mutually cannot-link identified speakers
-        cannot_link = mutual_cl(hypothesis)
-
-        # cluster speakers (taking into account identified ones)
-        try:
-            hypothesis = self.diarization.speech_turn_clustering(file, hypothesis,
-                                                                 cannot_link = cannot_link)
-        except Exception as e:
-            print(e)
+        # keep track of segments which cannot be linked together
+        cannot_link = {}
+        print('about to give first hypothesis')
+        # give first hypothesis -> complete diarization pipeline
+        hypothesis = self.diarization(file)
+        hypothesis.rename_labels(generator="int", copy=False)
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # keep track of segments which come from same (resp. different) speakers
@@ -175,6 +146,7 @@ class Algorithm:
                                                                  hypothesis,
                                                                  '@emb',
                                                                  metric=self.metric)
+                print(query_speaker, farthest, centroid)
                 time_1, time_2 = farthest.middle, centroid.middle
                 # is this farthest segment in the right cluster ?
                 request = {
@@ -229,11 +201,11 @@ class Algorithm:
                         del hypothesis[s1]
                         hypothesis[s1] = l2
                     # user initiative -> prefer already existing references
-                    elif l2 in self.identification.references:
+                    elif not isinstance(l2, Number):
                         print(f'relabel {s1}: {l1} <- {l2}')
                         del hypothesis[s1]
                         hypothesis[s1] = l2
-                    elif l1 in self.identification.references:
+                    elif not isinstance(l1, Number):
                         print(f'relabel {s2}: {l2} <- {l1}')
                         del hypothesis[s2]
                         hypothesis[s2] = l1
@@ -263,10 +235,10 @@ class Algorithm:
                             # any Number label will be relabeld in `relabel_unknown`
                             hypothesis[s1] = -1
                         # user initiative -> prefer already existing references
-                        elif l2 in self.identification.references:
+                        elif not isinstance(l2, Number):
                             del hypothesis[s1]
                             hypothesis[s1] = -1
-                        elif l1 in self.identification.references:
+                        elif not isinstance(l1, Number):
                             del hypothesis[s2]
                             hypothesis[s2] = -1
                         else:
@@ -287,13 +259,6 @@ class Algorithm:
             hypothesis = self.diarization.speech_turn_clustering(file, hypothesis,
                                                                  cannot_link = cannot_link)
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
-
-        # update references with new clusters and newly identified speakers
-        # relabel new clusters so they don't mix with previous ones
-        mapping = {label: f'{uri}#{label}' for label in hypothesis.labels()
-                   if label not in self.identification.references}
-        hypothesis.rename_labels(mapping=mapping, copy=False)
-        update_references(file, hypothesis, '@emb', self.identification.references)
 
         # write hypothesis locally to a time-stamped file
         with open(SAVE_TO, 'a') as fp:
