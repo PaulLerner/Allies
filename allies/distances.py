@@ -137,15 +137,18 @@ def get_farthest(current_file, hypothesis, model, metric='cosine'):
                                                       model,
                                                       metric=metric)
 
-    # centroids
-    min_per_speaker = {speaker: min(segments, key=segments.get)
+    # centroids segments
+    centroids = {speaker: min(segments, key=segments.get)
+                 for speaker, segments in distances_per_speaker.items()}
+
+    # farthest segments distance
+    max_per_speaker = {speaker: max(segments)
                        for speaker, segments in distances_per_speaker.items()}
-    # farthest segments
-    max_per_speaker = {speaker: max(segments, key=segments.get)
-                       for speaker, segments in distances_per_speaker.items()}
+
     # farthest of the farthests segments
-    speaker = max(max_per_speaker, key=max_per_speaker.get)
-    farthest, centroid = max_per_speaker[speaker], min_per_speaker[speaker]
+    speaker = max(max_per_speaker)
+    farthest, centroid = max_per_speaker[speaker], centroids[speaker]
+
     return speaker, farthest, centroid
 
 
