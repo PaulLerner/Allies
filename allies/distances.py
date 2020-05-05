@@ -83,6 +83,7 @@ def get_distances_per_speaker(current_file, hypothesis, model, metric='cosine'):
             distances_per_speaker[speaker][segment] = distances[i]
     return distances_per_speaker
 
+
 def get_centroids(current_file, annotation, model, metric='cosine'):
     """Finds the centroids of an annotation
     Parameters
@@ -106,7 +107,7 @@ def get_centroids(current_file, annotation, model, metric='cosine'):
     # centroids
     centroids = annotation.empty()
     for speaker, segments in distances_per_speaker.items():
-        centroid = min(segments)
+        centroid = min(segments , key=segments.get)
         centroids[centroid, speaker] = speaker
 
     return centroids
@@ -137,18 +138,16 @@ def get_farthest(current_file, hypothesis, model, metric='cosine'):
                                                       model,
                                                       metric=metric)
 
-    # centroids segments
-    centroids = {speaker: min(segments, key=segments.get)
-                 for speaker, segments in distances_per_speaker.items()}
+    stat_per_speaker = {speaker:
+                            {"centroid": min(segments, key=segments.get),
+                             "farthest": {"segment": max(segments, key=segments.get),
+                                          "distance": max(segments.values())}}
+                        for speaker, segments in distances_per_speaker.items()}
 
-    # farthest segments distance
-    max_per_speaker = {speaker: max(segments)
-                       for speaker, segments in distances_per_speaker.items()}
-
-    # farthest of the farthests segments
-    speaker = max(max_per_speaker)
-    farthest, centroid = max_per_speaker[speaker], centroids[speaker]
-
+    speaker = max(stat_per_speaker,
+                  key=lambda k: stat_per_speaker[k]['farthest']['distance'])
+    farthest = stat_per_speaker[speaker]['farthest']['segment']
+    centroid = stat_per_speaker[speaker]['centroid']
     return speaker, farthest, centroid
 
 
