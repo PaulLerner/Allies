@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import traceback
 from datetime import datetime
 import numpy as np
 from pathlib import Path
@@ -186,7 +187,12 @@ class Algorithm:
                 "hypothesis": alliesAnnotation,  # The current hypothesis
                 "system_request": request  # the question for the human in the loop
             }
-            human_assisted_learning, user_answer = loop_channel.validate(message_to_user)
+            try:
+                human_assisted_learning, user_answer = loop_channel.validate(message_to_user)
+            except Exception as e:
+                print("something went wrong with user interaction, breaking:",e)
+                print(traceback.format_exc())
+                break
             print('got user_answer :', user_answer)
             response_type = user_answer.response_type
             if response_type == 'stop':
@@ -291,7 +297,7 @@ class Algorithm:
                    if label not in self.identification.references}
         hypothesis.rename_labels(mapping=mapping, copy=False)
         update_references(file, hypothesis, '@emb', self.identification.references)
-
+        alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
         # write hypothesis locally to a time-stamped file
         with open(SAVE_TO, 'a') as fp:
             hypothesis.write_rttm(fp)
@@ -299,10 +305,12 @@ class Algorithm:
         # End of human assisted learning
         # Send the current hypothesis
         outputs["adapted_speakers"].write(alliesAnnotation)
-
         # FIXME what is this ?? (from anthony baseline)
         if not inputs.hasMoreData():
+            print('not inputs.hasMoreData()')
             pass
+        else:
+            print('inputs.hasMoreData()')
 
         print('\n\n')
         # always return True, it signals BEAT to continue processing
@@ -372,3 +380,4 @@ if __name__ == '__main__':
         break
 
 
+#foo
