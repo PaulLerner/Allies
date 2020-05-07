@@ -7,10 +7,10 @@ identification:
     - train
     - development
   label_min_duration: 0.0
-  weigh: False
+  weigh: True
   classifier:
-    k: 48
-    threshold: 0.2360556167967878
+    k: 5
+    threshold: 0.1
 pipeline:
    name: pyannote.audio.pipeline.speaker_diarization.SpeakerDiarization
    params:
@@ -18,22 +18,23 @@ pipeline:
       scd_scores: /vol/work/lerner/allies/baseline/scd/train/ALLIES.SpeakerDiarization.Custom.train/validate_segmentation_fscore/ALLIES.SpeakerDiarization.Custom.development/apply/0941
       embedding: /vol/work/lerner/allies/baseline/arcface+variable/train/ALLIES.SpeakerDiarization.Custom.train/validate_diarization_fscore/ALLIES.SpeakerDiarization.Custom.development/apply/0014/
       metric: cosine
-      method: complete
+      method: average
       evaluation_only: True
 sampler:
    name: TPESampler
 
-loss: 0.16090632896238663
+loss: 0.13051666826632252
 params:
-  min_duration: 1.9215464654726448
+  min_duration: 0.4381704929101738
   speech_turn_assignment:
     closest_assignment:
-      threshold: 0.7983889225553765
+      threshold: 1.1119680622237293
   speech_turn_clustering:
     clustering:
-      threshold: 0.6434177604639124
+      threshold: 0.19468240749530696
   speech_turn_segmentation:
     speaker_change_detection:
       alpha: 4.3199666907123714e-05
       min_duration: 1.626668986940032
     speech_activity_detection: {}
+
