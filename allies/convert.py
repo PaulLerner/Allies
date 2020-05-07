@@ -210,6 +210,7 @@ class AlliesAnnotation:
     def to_hypothesis(self):
         """
         Transform this `Annotation` into a `anthony_larcher/speakers/1`
+        Note that speaker labels are converted to `str`
         :return: a hypothesis dict:
           - 'speaker': list[str] list of predicted speaker IDs
           - 'start_time': list[float], start times of speakers in seconds
@@ -217,7 +218,7 @@ class AlliesAnnotation:
         """
         speakers, start_times, end_times = [], [], []
         for segment, _, label in self.annotation.itertracks(yield_label=True):
-            speakers.append(label)
+            speakers.append(str(label))
             start_times.append(segment.start)
             end_times.append(segment.end)
         return {"speaker": speakers,
