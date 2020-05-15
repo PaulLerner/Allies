@@ -85,6 +85,25 @@ def mutual_cl(hypothesis):
 
     return cannot_link
 
+def compute_embeddings(hypothesis, features):
+    embeddings, segments, labels = [], [], []
+    for segment, track, label in hypothesis.itertracks(yield_label=True):
+        # be more and more permissive until we have
+        # at least one embedding for current speech turn
+        for mode in ['strict', 'center', 'loose']:
+            x = features.crop(segment, mode=mode)
+            if len(x) > 0:
+                break
+        # skip speech turns so small we don't have any embedding for it
+        if len(x) < 1:
+            continue
+        # average speech turn embedding
+        x = np.mean(x, axis=0)
+        embeddings.append(x)
+        segments.append(segment)
+        labels.append(label)
+    return embeddings, segments, labels
+
 def relabel_unknown(hypothesis):
     """Relabels unknown segments (i.e. with a `Number` label) with a unique label
 

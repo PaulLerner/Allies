@@ -142,13 +142,21 @@ class Algorithm:
                 # by using an object of type request
                 # The request is the question asked to the system
 
-                # find segment farthest from all existing clusters in the current hypothesis
-                query_speaker, farthest, centroid = get_farthest(file,
-                                                                 hypothesis,
-                                                                 '@emb',
-                                                                 metric=self.metric)
-                print(query_speaker, farthest, centroid)
-                time_1, time_2 = farthest.middle, centroid.middle
+                # 1. find centroids
+                centroids, others = get_centroids(file,
+                                                  hypothesis,
+                                                  '@emb',
+                                                  metric=self.metric)
+
+                # 2. find segment farthest from all centroids
+                farthest_l, farthest_s, centroid_l, centroid_s = get_farthest(file,
+                                                                              hypothesis,
+                                                                              '@emb',
+                                                                              metric=self.metric)
+                print(f'farthest segment: {farthest_s} ({farthest_l})\n'
+                      f'closest centroid: {centroid_s} ({centroid_l})')
+
+                time_1, time_2 = farthest_s.middle, centroid_s.middle
                 # is this farthest segment in the right cluster ?
                 request = {
                     "request_type": "same",
@@ -177,8 +185,8 @@ class Algorithm:
                 time_1, time_2 = Time(user_answer.time_1), Time(user_answer.time_2)
                 same = user_answer.answer.value
                 if active:
-                    s1, l1 = farthest, query_speaker
-                    s2, l2 = centroid, query_speaker
+                    s1, l1 = farthest_s, farthest_l
+                    s2, l2 = centroid_s, centroid_l
                 else:
                     s1, t1, l1 = time_1.find_label(hypothesis)
                     s2, t2, l2 = time_2.find_label(hypothesis)

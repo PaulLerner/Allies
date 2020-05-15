@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pyannote.audio.features.wrapper import Wrapper, Wrappable
 
+from .utils import compute_embeddings
+
 np.set_printoptions(precision=2, suppress=True)
 
 
@@ -98,57 +100,69 @@ def get_centroids(current_file, annotation, model, metric='cosine'):
     Returns
     -------
     centroids: Annotation
+        parts of `annotation` which are centroids
+    others: Annotation
+        parts of `annotation` which are not centroids
     """
     distances_per_speaker = get_distances_per_speaker(current_file,
                                                       annotation,
                                                       model,
                                                       metric=metric)
 
-    # centroids
+    others = annotation.copy()
     centroids = annotation.empty()
     for speaker, segments in distances_per_speaker.items():
         centroid = min(segments , key=segments.get)
         centroids[centroid, speaker] = speaker
+        del others[centroid]
 
-    return centroids
+    return centroids, others
 
 
-def get_farthest(current_file, hypothesis, model, metric='cosine'):
-    """Finds segment farthest from all existing clusters given :
+def get_farthest(current_file, centroids, others, model, metric='cosine'):
+    """Finds segment farthest from all existing centroids given :
     Parameters
     ----------
     current_file: dict
         file as provided by pyannote protocol
-    hypothesis : `Annotation`
+    centroids : `Annotation`
+    others: `Annotation`
     model: Wrappable
         Describes how raw speaker embeddings should be obtained.
         See pyannote.audio.features.wrapper.Wrapper documentation for details.
 
     Returns
     -------
-    speaker: str or int
-        speaker/cluster which contains the farthest segment
-    farthest: pyannote Segment
+    farthest_l: str or int
+        label of the speaker/cluster which contains the farthest segment
+    farthest_s: pyannote Segment
         farthest segment from all existing speakers/clusters
-    centroid: pyannote Segment
-        centroid of the cluster containing `farthest`
+    centroid_l: str or int
+        label of the closest centroid to `farthest`
+    centroid_s: pyannote Segment
+        segment of the closest centroid to `farthest`
     """
-    distances_per_speaker = get_distances_per_speaker(current_file,
-                                                      hypothesis,
-                                                      model,
-                                                      metric=metric)
+    model = Wrapper(model)
+    features = model(current_file)
+    centroid_emb, centroid_seg, centroid_lab = compute_embeddings(centroids, features)
+    other_emb, other_seg, other_lab = compute_embeddings(others, features)
 
-    stat_per_speaker = {speaker:
-                            {"centroid": min(segments, key=segments.get),
-                             "farthest": {"segment": max(segments, key=segments.get),
-                                          "distance": max(segments.values())}}
-                        for speaker, segments in distances_per_speaker.items()}
+    # distance between every centroid and every other speech turn
+    distances = cdist(centroid_emb, other_emb, metric=metric)
 
-    speaker = max(stat_per_speaker,
-                  key=lambda k: stat_per_speaker[k]['farthest']['distance'])
-    farthest = stat_per_speaker[speaker]['farthest']['segment']
-    centroid = stat_per_speaker[speaker]['centroid']
-    return speaker, farthest, centroid
+    # average distance per other speech turn
+    avg_dist = np.mean(distances, axis=0)
+
+    # farthest (in average) embedding from all centroids ?
+    farthest_i = np.argmax(avg_dist)
+    # closest centroid to that embedding ?
+    centroid_i = np.argmin(distances[:, farthest_i])
+
+    # boring retrieval of label and segment from index
+    farthest_l, farthest_s = other_lab[farthest_i], other_seg[farthest_i]
+    centroid_l, centroid_s = centroid_lab[centroid_i], centroid_seg[centroid_i]
+
+    return farthest_l, farthest_s, centroid_l, centroid_s
 
 
 def find_closest_to(to_segment, to_embedding, current_file, hypothesis, model,
