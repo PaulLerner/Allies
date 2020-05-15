@@ -150,7 +150,8 @@ class Algorithm:
 
                 # 2. find segment farthest from all centroids
                 farthest_l, farthest_s, centroid_l, centroid_s = get_farthest(file,
-                                                                              hypothesis,
+                                                                              centroids,
+                                                                              others,
                                                                               '@emb',
                                                                               metric=self.metric)
                 print(f'farthest segment: {farthest_s} ({farthest_l})\n'
@@ -201,13 +202,6 @@ class Algorithm:
                     cannot_link.get(s2,set()).discard(s1)
                     if active:
                         # system initiative -> relabel queried segment
-                        # 1. convert centroid label to string so both segments are merged
-                        if isinstance(l2, Number):
-                            l2 = str(l2)
-                            del hypothesis[s2]
-                            hypothesis[s2] = l2
-                        print(f'relabel {s1}: {l1} <- {l2}')
-                        # 2. relabel queried segment
                         del hypothesis[s1]
                         hypothesis[s1] = l2
                     # user initiative -> prefer already existing references
@@ -215,46 +209,28 @@ class Algorithm:
                         print(f'relabel {s1}: {l1} <- {l2}')
                         del hypothesis[s1]
                         hypothesis[s1] = l2
-                    elif not isinstance(l1, Number):
+                    # arbitrary relabel s2
+                    else:
                         print(f'relabel {s2}: {l2} <- {l1}')
                         del hypothesis[s2]
                         hypothesis[s2] = l1
-                    else:
-                        # create a new `str` label so both segments are merged
-                        new_label = f'{l1}@{l2}'
-                        print(f'relabel {s1}: {l1} <- {new_label}')
-                        print(f'relabel {s2}: {l2} <- {new_label}')
-                        del hypothesis[s1]
-                        del hypothesis[s2]
-                        hypothesis[s1] = new_label
-                        hypothesis[s2] = new_label
-                        # rename str(l1) -> new_label in case it already exists to propagate
-                        # annotations. Note that we enforce `str` so we don't relabel
-                        # other segments in the hypothetical un-indentified cluster l1
-                        hypothesis.rename_labels(mapping={str(l1):new_label}, copy=False)
-                        hypothesis.rename_labels(mapping={str(l2):new_label}, copy=False)
-
                 else:
                     negatives.append((s1, s2))                   
                     print(f'cannot-link {s1} ({l1}) : {s2} ({l2})')
-                    # remove any must-link constraint
-                    if l1 == l2 and not isinstance(l1, Number):
-                        if active:
-                            # system initiative -> relabel queried segment
-                            del hypothesis[s1]
-                            # any Number label will be relabeld in `relabel_unknown`
-                            hypothesis[s1] = -1
-                        # user initiative -> prefer already existing references
-                        elif not isinstance(l2, Number):
-                            del hypothesis[s1]
-                            hypothesis[s1] = -1
-                        elif not isinstance(l1, Number):
-                            del hypothesis[s2]
-                            hypothesis[s2] = -1
-                        else:
-                            # arbitrary relabel s1
-                            del hypothesis[s1]
-                            hypothesis[s1] = -1                           
+                    # this should be a unique label in hypothesis
+                    new_label = hash(str(hypothesis.labels()))
+                    if active:
+                        # system initiative -> relabel queried segment
+                        del hypothesis[s1]
+                        hypothesis[s1] = new_label
+                    # user initiative -> prefer already existing references
+                    elif not isinstance(l2, Number):
+                        del hypothesis[s1]
+                        hypothesis[s1] = new_label
+                    # arbitrary relabel s2
+                    else:
+                        del hypothesis[s2]
+                        hypothesis[s2] = new_label
                     # update cannot-links
                     cannot_link.setdefault(s1, set())
                     cannot_link[s1].add(s2)
@@ -262,12 +238,7 @@ class Algorithm:
                 print(f'got an unexpected response type from user: {response_type}')
 
             # TODO: fine-tune embedding model given positives, negatives
-            # update hypothesis with constraints
-            # 1. relabel unknown segments with a unique label so they're not merged together
-            hypothesis = relabel_unknown(hypothesis)
-            # 2. apply the actual pipeline
-            hypothesis = self.diarization.speech_turn_clustering(file, hypothesis,
-                                                                 cannot_link = cannot_link)
+            # naive baseline: don't do anything except correct hypothesis
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # write hypothesis locally to a time-stamped file
