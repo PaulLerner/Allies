@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from allies.utils import get_params
 from datetime import datetime
 import numpy as np
 from pathlib import Path
@@ -161,11 +162,12 @@ class Algorithm:
                 "hypothesis": alliesAnnotation,  # The current hypothesis
                 "system_request": request  # the question for the human in the loop
             }
-            human_assisted_learning, user_answer = loop_channel.validate(message_to_user)
+            _, user_answer = loop_channel.validate(message_to_user)
             print('got user_answer :', user_answer)
             response_type = user_answer.response_type
             if response_type == 'stop':
                 # user is tired of us
+                human_assisted_learning = False
                 break
             elif response_type == 'boundary':
                 # TODO: update SCD model or pipeline

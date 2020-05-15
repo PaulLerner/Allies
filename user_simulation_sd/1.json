@@ -1,0 +1,47 @@
+{
+    "api_version": 2,
+    "language": "python",
+    "schema_version": 3,
+    "type": "sequential_loop_evaluator",
+    "groups": [
+        {
+            "inputs": {
+                "evaluator_file_info": {
+                    "type": "anthony_larcher/file_info_sd/1"
+                },
+                "evaluator_speakers": {
+                    "type": "anthony_larcher/speakers/1"
+                },
+                "evaluator_uem": {
+                    "type": "anthony_larcher/uemranges/1"
+                }
+            },
+            "loop": {
+                "answer": {
+                    "type": "anthony_larcher/user_to_system_sd/1"
+                },
+                "request": {
+                    "type": "anthony_larcher/system_to_user_sd/1"
+                }
+            },
+            "name": "group0",
+            "outputs": {
+                "evaluator_output": {
+                    "type": "system/float/1"
+                }
+            }
+        }
+    ],
+    "parameters": {
+        "max_cost_per_file": {
+            "default": 60.0,
+            "description": "Maximum amount of effort a user is going to do on a given file in seconds",
+            "type": "float32"
+        },
+        "request_collar_cost": {
+            "default": 3.0,
+            "description": "Duration the user has to listen to around a point to given an answer in seconds",
+            "type": "float32"
+        }
+    }
+}

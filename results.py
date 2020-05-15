@@ -11,6 +11,7 @@ results.py <log>
 from docopt import docopt
 import numpy as np
 from pathlib import Path
+from matplotlib import pyplot as plt
 import re
 
 def main(args):
@@ -28,6 +29,13 @@ def main(args):
         str_results.append((file_uri,supervision_type))
         DERs.append(float(DER))
     str_results,DERs=np.array(str_results),np.array(DERs)
+
+    # Plot results
+    plt.title(log_path.stem)
+    plt.xlabel('File #')
+    plt.ylabel('DER')
+    plt.plot(DERs)
+    plt.savefig(log_path.with_suffix('.png'))
 
     #prints results and write csv
     average = np.mean(DERs)
