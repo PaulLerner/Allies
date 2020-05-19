@@ -142,24 +142,12 @@ class Algorithm:
                 # by using an object of type request
                 # The request is the question asked to the system
 
-                # 1. find centroids
-                centroids, others = get_centroids(file,
-                                                  hypothesis,
-                                                  '@emb',
-                                                  metric=self.metric)
-                # other segments should not be identified nor must-linked
-                _, others = split_unknown(others)
-
-                # 2. find segment farthest from all centroids
-                farthest_l, farthest_s, centroid_l, centroid_s = get_farthest(file,
-                                                                              centroids,
-                                                                              others,
-                                                                              '@emb',
-                                                                              metric=self.metric)
-                print(f'farthest segment: {farthest_s} ({farthest_l})\n'
-                      f'closest centroid: {centroid_s} ({centroid_l})')
-
-                time_1, time_2 = farthest_s.middle, centroid_s.middle
+                s1 = self.diarization.speech_turn_clustering.segment1
+                s2 = self.diarization.speech_turn_clustering.segment2
+                if s1 is None or s2 is None:
+                    print('Model in confident. Breaking')
+                    break
+                time_1, time_2 = s1.middle, s2.middle
                 # is this farthest segment in the right cluster ?
                 request = {
                     "request_type": "same",
@@ -187,12 +175,8 @@ class Algorithm:
                 # Time to segment / hypothesis labels
                 time_1, time_2 = Time(user_answer.time_1), Time(user_answer.time_2)
                 same = user_answer.answer.value
-                if active:
-                    s1, l1 = farthest_s, farthest_l
-                    s2, l2 = centroid_s, centroid_l
-                else:
-                    s1, t1, l1 = time_1.find_label(hypothesis)
-                    s2, t2, l2 = time_2.find_label(hypothesis)
+                s1, t1, l1 = time_1.find_label(hypothesis)
+                s2, t2, l2 = time_2.find_label(hypothesis)
                 print(time_1, s1, l1)
                 print(time_2, s2, l2)
                 # make use of user answer
