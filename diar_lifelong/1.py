@@ -11,7 +11,7 @@ from pyannote.audio.features.wrapper import Wrapper
 from pyannote.database import get_protocol
 
 import allies
-from allies.utils import get_params, hypothesis_to_unk, relabel_unknown, mutual_cl
+from allies.utils import get_params, hypothesis_to_unk, relabel_unknown, mutual_cl, split_unknown
 from allies.serializers import DummySerializer
 from allies.convert import UEM, AlliesAnnotation, id_to_file, Time
 from allies.distances import get_thresholds, get_farthest, find_closest_to, get_centroids
@@ -147,10 +147,13 @@ class Algorithm:
                                                   hypothesis,
                                                   '@emb',
                                                   metric=self.metric)
+                # other segments should not be identified nor must-linked
+                _, others = split_unknown(others)
 
                 # 2. find segment farthest from all centroids
                 farthest_l, farthest_s, centroid_l, centroid_s = get_farthest(file,
-                                                                              hypothesis,
+                                                                              centroids,
+                                                                              others,
                                                                               '@emb',
                                                                               metric=self.metric)
                 print(f'farthest segment: {farthest_s} ({farthest_l})\n'

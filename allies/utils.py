@@ -104,6 +104,15 @@ def compute_embeddings(hypothesis, features):
         labels.append(label)
     return embeddings, segments, labels
 
+def split_unknown(hypothesis):
+    """Split hypothesis in two:
+    - identified speakers with a `str` label
+    - unknown clusters with a `Number` label
+    and returns them in that order
+    """
+    unknown_labels = [label for label in hypothesis.labels() if isinstance(label, Number)]
+    return hypothesis.subset(unknown_labels, invert=True), hypothesis.subset(unknown_labels, invert=False)
+
 def relabel_unknown(hypothesis):
     """Relabels unknown segments (i.e. with a `Number` label) with a unique label
 
