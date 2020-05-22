@@ -1,20 +1,16 @@
 #!/usr/bin/env python
-from allies.utils import get_params
 from datetime import datetime
 import numpy as np
 from pathlib import Path
 from numbers import Number
 
-from pyannote.audio.pipeline import SpeakerDiarization, KNearestSpeakers, \
-    update_references, get_references
+from pyannote.audio.pipeline import SpeakerDiarization, KNearestSpeakers, get_references
 from pyannote.audio.features.wrapper import Wrapper
 from pyannote.database import get_protocol
 
 import allies
-from allies.utils import get_params, hypothesis_to_unk, relabel_unknown, mutual_cl, split_unknown
-from allies.serializers import DummySerializer
+from allies.utils import get_params, relabel_unknown, mutual_cl
 from allies.convert import UEM, AlliesAnnotation, id_to_file, Time
-from allies.distances import get_thresholds, get_farthest, find_closest_to, get_centroids
 
 TIMESTAMP = datetime.today().strftime('%Y%m%d-%H%M%S')
 APPLY_DIR = Path(allies.__file__).parent / 'apply'
@@ -110,8 +106,8 @@ class Algorithm:
         if not human_assisted_learning:
             pass
 
-        # keep track of segments which cannot be linked together
-        cannot_link = {}
+        # keep track of clustering constraints
+        cannot_link, must_link = {}, {}
         print('about to give first hypothesis')
         # give first hypothesis -> complete diarization pipeline
         hypothesis = self.diarization(file)
@@ -119,6 +115,8 @@ class Algorithm:
         alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # keep track of segments which come from same (resp. different) speakers
+        # might be redundant with cannot_link, must_link depending on the setup
+        # i.e. constraints might be automatic or come only from user
         positives, negatives = [], []
 
         # If human assisted learning mode is on (active or interactive learning)
@@ -127,10 +125,10 @@ class Algorithm:
             # For the case of active learning, this request is overwritten by your system itself
             # request_type can be either "same" or "boundary"
             # if "same", the question asked to the user is: Is the same speaker speaking at time time_1 and time_2
-            #            the cost of this question is 6s / total_file_duration
+            #            the cost of this question is 6s
             # if "boundary" the question asked to the user is: What are the boundaries of the segment including time_1
             #            note that the data time_2 is not used in this request
-            #            the cost of this question is (|time_2 - time_1| + 6s) / total_file_duration
+            #            the cost of this question is (|time_2 - time_1| + 6s)
             request = {
                 "request_type": "same",
                 "time_1": np.float32(0.5),
@@ -145,7 +143,7 @@ class Algorithm:
                 s1 = self.diarization.speech_turn_clustering.segment1
                 s2 = self.diarization.speech_turn_clustering.segment2
                 if s1 is None or s2 is None:
-                    print('Model in confident. Breaking')
+                    print('Model is confident. Breaking')
                     break
                 time_1, time_2 = s1.middle, s2.middle
                 # is this farthest segment in the right cluster ?
@@ -179,57 +177,30 @@ class Algorithm:
                 s2, t2, l2 = time_2.find_label(hypothesis)
                 print(time_1, s1, l1)
                 print(time_2, s2, l2)
+
                 # make use of user answer
                 # TODO: propagate to close segments ?
                 if same:
                     positives.append((s1, s2))
+                    print(f'Must-link {s1} ({l1}) : {s2} ({l2})')
+
                     # remove any cannot-link constraint
                     cannot_link.get(s1,set()).discard(s2)
                     cannot_link.get(s2,set()).discard(s1)
-                    if active:
-                        # system initiative -> relabel queried segment
-                        # 1. convert centroid label to string so both segments are merged
-                        if isinstance(l2, Number):
-                            l2 = str(l2)
-                            del hypothesis[s2]
-                            hypothesis[s2] = l2
-                        print(f'relabel {s1}: {l1} <- {l2}')
-                        # 2. relabel queried segment
-                        del hypothesis[s1]
-                        hypothesis[s1] = l2
-                    # user initiative -> prefer already existing references
-                    elif not isinstance(l2, Number):
-                        print(f'relabel {s1}: {l1} <- {l2}')
-                        del hypothesis[s1]
-                        hypothesis[s1] = l2
-                    elif not isinstance(l1, Number):
-                        print(f'relabel {s2}: {l2} <- {l1}')
-                        del hypothesis[s2]
-                        hypothesis[s2] = l1
-                    else:
-                        # create a new `str` label so both segments are merged
-                        new_label = f'{l1}@{l2}'
-                        print(f'relabel {s1}: {l1} <- {new_label}')
-                        print(f'relabel {s2}: {l2} <- {new_label}')
-                        del hypothesis[s1]
-                        del hypothesis[s2]
-                        hypothesis[s1] = new_label
-                        hypothesis[s2] = new_label
-                        # rename str(l1) -> new_label in case it already exists to propagate
-                        # annotations. Note that we enforce `str` so we don't relabel
-                        # other segments in the hypothetical un-indentified cluster l1
-                        hypothesis.rename_labels(mapping={str(l1):new_label}, copy=False)
-                        hypothesis.rename_labels(mapping={str(l2):new_label}, copy=False)
 
+                    # update must-links
+                    must_link.setdefault(s1, set())
+                    must_link[s1].add(s2)
                 else:
                     negatives.append((s1, s2))                   
                     print(f'cannot-link {s1} ({l1}) : {s2} ({l2})')
+
                     # remove any must-link constraint
                     if l1 == l2 and not isinstance(l1, Number):
                         if active:
                             # system initiative -> relabel queried segment
                             del hypothesis[s1]
-                            # any Number label will be relabeld in `relabel_unknown`
+                            # any Number label will be relabeled in `relabel_unknown`
                             hypothesis[s1] = -1
                         # user initiative -> prefer already existing references
                         elif not isinstance(l2, Number):
@@ -241,7 +212,8 @@ class Algorithm:
                         else:
                             # arbitrary relabel s1
                             del hypothesis[s1]
-                            hypothesis[s1] = -1                           
+                            hypothesis[s1] = -1
+
                     # update cannot-links
                     cannot_link.setdefault(s1, set())
                     cannot_link[s1].add(s2)
@@ -253,8 +225,10 @@ class Algorithm:
             # 1. relabel unknown segments with a unique label so they're not merged together
             hypothesis = relabel_unknown(hypothesis)
             # 2. apply the actual pipeline
-            hypothesis = self.diarization.speech_turn_clustering(file, hypothesis,
-                                                                 cannot_link = cannot_link)
+            hypothesis = self.diarization.speech_turn_clustering(file,
+                                                                 hypothesis,
+                                                                 cannot_link=cannot_link,
+                                                                 must_link=must_link)
             alliesAnnotation = AlliesAnnotation(hypothesis).to_hypothesis()
 
         # write hypothesis locally to a time-stamped file
