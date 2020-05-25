@@ -196,23 +196,8 @@ class Algorithm:
                     print(f'cannot-link {s1} ({l1}) : {s2} ({l2})')
 
                     # remove any must-link constraint
-                    if l1 == l2 and not isinstance(l1, Number):
-                        if active:
-                            # system initiative -> relabel queried segment
-                            del hypothesis[s1]
-                            # any Number label will be relabeled in `relabel_unknown`
-                            hypothesis[s1] = -1
-                        # user initiative -> prefer already existing references
-                        elif not isinstance(l2, Number):
-                            del hypothesis[s1]
-                            hypothesis[s1] = -1
-                        elif not isinstance(l1, Number):
-                            del hypothesis[s2]
-                            hypothesis[s2] = -1
-                        else:
-                            # arbitrary relabel s1
-                            del hypothesis[s1]
-                            hypothesis[s1] = -1
+                    must_link.get(s1,set()).discard(s2)
+                    must_link.get(s2,set()).discard(s1)
 
                     # update cannot-links
                     cannot_link.setdefault(s1, set())
