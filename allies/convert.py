@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 from pyannote.core import Annotation, Segment, Timeline
-from warnings import warn
 from pyannote.database.protocol import SpeakerDiarizationProtocol
 from pyannote.database.protocol.protocol import ProtocolFile
 from allies.utils import get_protocols
+
 from pathlib import Path
+from datetime import timedelta
 import numpy as np
 
 def id_to_file():
@@ -110,9 +111,18 @@ class Time:
         """
         return (self.value >= segment.start and self.value <= segment.end)
 
+    def to_segment(self, other):
+        """Converts 2 Time to a (non-empty) Segment"""
+        if self.value <= other.value:
+            start = self.value
+            end = other.value
+        else:
+            start = other.value
+            end = self.value
+        return Segment(start, end)
+
     def __str__(self):
         seconds = self.value
-        from datetime import timedelta
         negative = seconds < 0
         seconds = abs(seconds)
         td = timedelta(seconds=seconds)
