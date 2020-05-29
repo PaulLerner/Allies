@@ -3,7 +3,9 @@ from datetime import datetime
 import numpy as np
 from pathlib import Path
 from numbers import Number
+from warnings import warn
 
+from pyannote.core import Segment
 from pyannote.audio.pipeline import SpeakerDiarization, KNearestSpeakers, get_references
 from pyannote.audio.features.wrapper import Wrapper
 from pyannote.database import get_protocol
@@ -168,7 +170,32 @@ class Algorithm:
                 break
             elif response_type == 'boundary':
                 # TODO: update SCD model or pipeline
-                pass
+                # Time to segment / hypothesis labels
+                time_1, time_2 = Time(user_answer.time_1), Time(user_answer.time_2)
+                speech = user_answer.answer.value
+                if not speech:
+                    warn(f'{time_1} is not speech as expected. Breaking from interaction.')
+                    break
+                s1, t1, l1 = time_1.find_label(hypothesis)
+                s2, t2, l2 = time_2.find_label(hypothesis)
+                print(time_1, s1, l1)
+                print(time_2, s2, l2)
+                if s1 != s2:
+                    msg = (f'{time_1} and {time_2} are already correctly segmented in '
+                           f'2 segments: {s1} ({l1}) and {s2} ({l2}). '
+                           f'Breaking from interaction.')
+                    warn(msg)
+                    break
+                # correct hypothesis segmentation and add cannot-link
+                before, after = s1
+                del hypothesis[s1, t1]
+                s1 = time_1.to_segment(time_2)
+                before = Segment(before, s1.start)
+                after = Segment(s1.end, after)
+                # discarding labels since segmentation was erroneous
+                hypothesis[before, t1], hypothesis[s1, t1], hypothesis[after, t1] = -1, -1, -1
+                print(f'cannot-link {before} : {s1} : {after}')
+                cannot_link[s1] = {before, after}
             elif response_type == 'same':
                 # Time to segment / hypothesis labels
                 time_1, time_2 = Time(user_answer.time_1), Time(user_answer.time_2)
@@ -185,8 +212,8 @@ class Algorithm:
                     print(f'Must-link {s1} ({l1}) : {s2} ({l2})')
 
                     # remove any cannot-link constraint
-                    cannot_link.get(s1,set()).discard(s2)
-                    cannot_link.get(s2,set()).discard(s1)
+                    cannot_link.get(s1, set()).discard(s2)
+                    cannot_link.get(s2, set()).discard(s1)
 
                     # update must-links
                     must_link.setdefault(s1, set())
@@ -196,8 +223,8 @@ class Algorithm:
                     print(f'cannot-link {s1} ({l1}) : {s2} ({l2})')
 
                     # remove any must-link constraint
-                    must_link.get(s1,set()).discard(s2)
-                    must_link.get(s2,set()).discard(s1)
+                    must_link.get(s1, set()).discard(s2)
+                    must_link.get(s2, set()).discard(s1)
 
                     # update cannot-links
                     cannot_link.setdefault(s1, set())
